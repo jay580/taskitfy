@@ -9,6 +9,7 @@ import {
   Alert
 } from 'react-native';
 import { TextInput, Button } from 'react-native-paper';
+import { COLORS, SPACING, RADIUS } from '../theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -63,8 +64,8 @@ export default function LoginScreen() {
             autoCapitalize="none"
             mode="outlined"
             style={styles.input}
-            outlineColor="#E0E0E0"
-            activeOutlineColor="#6200EE"
+            outlineColor={COLORS.divider}
+            activeOutlineColor={COLORS.link}
             left={<TextInput.Icon icon="email-outline" />}
           />
           
@@ -75,8 +76,8 @@ export default function LoginScreen() {
             secureTextEntry={secureTextEntry}
             mode="outlined"
             style={styles.input}
-            outlineColor="#E0E0E0"
-            activeOutlineColor="#6200EE"
+            outlineColor={COLORS.divider}
+            activeOutlineColor={COLORS.link}
             left={<TextInput.Icon icon="lock-outline" />}
             right={
               <TextInput.Icon 
@@ -96,7 +97,7 @@ export default function LoginScreen() {
             onPress={handleEmailLogin}
             style={styles.loginButton}
             contentStyle={styles.loginButtonContent}
-            buttonColor="#6200EE"
+            buttonColor={COLORS.link}
           >
             Sign In
           </Button>
@@ -114,7 +115,7 @@ export default function LoginScreen() {
             icon="google" 
             onPress={handleGoogleLogin}
             style={styles.googleButton}
-            textColor="#333333"
+            textColor={COLORS.textSecondary}
           >
             Sign in with Google
           </Button>
@@ -134,85 +135,85 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.card,
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: SPACING.xl,
     justifyContent: 'center',
   },
   headerContainer: {
     marginBottom: 40,
-    marginTop: 20,
+    marginTop: SPACING.lg,
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 8,
+    color: COLORS.textDark,
+    marginBottom: SPACING.xs,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666666',
+    color: COLORS.mutedText,
   },
   formContainer: {
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   input: {
-    marginBottom: 16,
-    backgroundColor: '#FFFFFF',
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.card,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   forgotPasswordText: {
-    color: '#6200EE',
+    color: COLORS.link,
     fontWeight: '600',
     fontSize: 14,
   },
   loginButton: {
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
   },
   loginButtonContent: {
-    paddingVertical: 8,
+    paddingVertical: SPACING.xs,
   },
   dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: COLORS.divider,
   },
   dividerText: {
-    paddingHorizontal: 16,
-    color: '#666666',
+    paddingHorizontal: SPACING.md,
+    color: COLORS.mutedText,
     fontSize: 14,
   },
   socialContainer: {
     marginBottom: 32,
   },
   googleButton: {
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.divider,
     paddingVertical: 4,
   },
   footerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 20,
+    paddingBottom: SPACING.lg,
   },
   footerText: {
-    color: '#666666',
+    color: COLORS.mutedText,
     fontSize: 15,
   },
   signupText: {
-    color: '#6200EE',
+    color: COLORS.link,
     fontWeight: 'bold',
     fontSize: 15,
   },
