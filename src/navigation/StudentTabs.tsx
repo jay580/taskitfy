@@ -54,7 +54,7 @@ export default function StudentTabs() {
           ),
         }}
       />
-      
+
       {/* Spacer/Action Tab */}
       <Tab.Screen
         name="AddAction"
