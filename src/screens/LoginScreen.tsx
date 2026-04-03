@@ -7,9 +7,10 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Alert,
-  TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  ScrollView
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { TextInput, Button } from 'react-native-paper';
 
 export default function LoginScreen() {
@@ -17,14 +18,17 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [secureTextEntry, setSecureTextEntry] = useState(true);
 
+  const navigation = useNavigation<any>();
+
   const handleEmailLogin = () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
     // TODO: Implement Firebase Email/Password Auth
-    Alert.alert('Sign In', `Attempting to login with email: ${email}`);
+    // Alert.alert('Sign In', `Attempting to login with email: ${email}`);
     console.log('Login with email:', email);
+    navigation.navigate('StudentRoot');
   };
 
   const handleGoogleLogin = () => {
@@ -50,7 +54,11 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <ScrollView 
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.content}>
         <View style={styles.headerContainer}>
           <Text style={styles.title}>Welcome Back</Text>
@@ -130,7 +138,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      </TouchableWithoutFeedback>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
