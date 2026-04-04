@@ -1,11 +1,8 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp, getApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyAa2y0mBwSoD5p75zWlmrB2soegcI0qVes",
   authDomain: "ssiapp-6e196.firebaseapp.com",
@@ -16,6 +13,13 @@ const firebaseConfig = {
   measurementId: "G-MZBVR4WM6K"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Secondary app for creating users without logging out admin
+const secondaryApp = getApps().find(app => app.name === 'SecondaryApp') 
+  || initializeApp(firebaseConfig, 'SecondaryApp');
+
+export const auth = getAuth(app);
+export const secondaryAuth = getAuth(secondaryApp);
+export const db = getFirestore(app);
+export const storage = getStorage(app);

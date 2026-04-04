@@ -1,11 +1,11 @@
 import { View, Text, ScrollView } from "react-native";
-import ScreenWrapper from "../components/ScreenWrapper";
-import Card from "../components/Card";
-import Button from "../components/Button";
-import Badge from "../components/Badge";
-import Points from "../components/Points";
-import Header from "../components/Header";
-import { COLORS, SPACING, TYPOGRAPHY } from "../theme";
+import ScreenWrapper from "@/components/ScreenWrapper";
+import Card from "@/components/Card";
+import Button from "@/components/Button";
+import Badge from "@/components/Badge";
+import Points from "@/components/Points";
+import Header from "@/components/Header";
+import { COLORS, SPACING, TYPOGRAPHY } from "@/theme";
 
 export default function ThemePreview() {
   return (

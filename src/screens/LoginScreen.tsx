@@ -13,23 +13,37 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { TextInput, Button } from 'react-native-paper';
 import { COLORS, SPACING, RADIUS } from '../theme';
+import { login } from '../services/auth';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secureTextEntry, setSecureTextEntry] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const navigation = useNavigation<any>();
 
-  const handleEmailLogin = () => {
+  const handleEmailLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
-    // TODO: Implement Firebase Email/Password Auth
-    // Alert.alert('Sign In', `Attempting to login with email: ${email}`);
-    console.log('Login with email:', email);
-    navigation.navigate('StudentRoot');
+    
+    setLoading(true);
+    try {
+      const { role } = await login(email, password);
+      console.log('Login success. Role:', role);
+      if (role === 'admin') {
+        navigation.replace('AdminRoot');
+      } else {
+        navigation.replace('StudentRoot');
+      }
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert('Login Failed', error.message || 'Check your credentials and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleLogin = () => {
@@ -106,11 +120,13 @@ export default function LoginScreen() {
           <Button 
             mode="contained" 
             onPress={handleEmailLogin}
+            loading={loading}
+            disabled={loading}
             style={styles.loginButton}
             contentStyle={styles.loginButtonContent}
             buttonColor={COLORS.link}
           >
-            Sign In
+            {loading ? "Signing In..." : "Sign In"}
           </Button>
         </View>
 
