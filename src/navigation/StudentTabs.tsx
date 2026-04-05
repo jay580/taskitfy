@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Import screens
 import HomeScreen from '../screens/Student/Home';
-import TasksScreen from '../screens/Student/Tasks';
+import QuestsStack from './QuestsStack';
 import LeaderboardScreen from '../screens/Student/Leaderboard';
 import ProfileScreen from '../screens/Student/Profile';
 
@@ -46,7 +46,7 @@ export default function StudentTabs() {
       />
       <Tab.Screen
         name="Quests"
-        component={TasksScreen}
+        component={QuestsStack}
         options={{
           tabBarLabel: 'Quests',
           tabBarIcon: ({ color, size }) => (

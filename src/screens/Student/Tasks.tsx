@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getAvailableTasks,
@@ -42,7 +43,7 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const formatDate = (iso: string) => {
+const formatDate = (iso: string | null) => {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -50,6 +51,7 @@ const formatDate = (iso: string) => {
 
 export default function TasksScreen() {
   const { userProfile } = useAuth();
+  const navigation = useNavigation<any>();
   const uid = userProfile?.uid ?? '';
 
   const [activeTab, setActiveTab] = useState('Available');
@@ -101,29 +103,32 @@ export default function TasksScreen() {
         date: formatDate(t.deadline),
         points: t.points,
         icon: 'clock-outline',
+        task: t, // Include full task for navigation
         ...getCategoryStyle(t.category),
       }));
     } else if (activeTab === 'Submissions') {
       data = submissions.map(s => ({
         id: s.id,
-        title: s.taskTitle,
-        category: s.taskCategory,
+        title: s.title,
+        category: 'Domestic' as const, // submissions don't have category in new schema
         date: formatDate(s.submittedAt),
-        points: s.taskPoints,
+        points: s.pointsAwarded,
         icon: s.status === 'rejected' ? 'close-circle-outline' : 'clock-outline',
-        ...getCategoryStyle(s.taskCategory),
+        ...getCategoryStyle('Domestic'),
         status: s.status.charAt(0).toUpperCase() + s.status.slice(1),
         statusColor: getStatusColor(s.status),
+        submission: s, // Include full submission
       }));
     } else {
       data = completed.map(s => ({
         id: s.id,
-        title: s.taskTitle,
-        category: s.taskCategory,
+        title: s.title,
+        category: 'Domestic' as const,
         date: formatDate(s.submittedAt),
-        points: s.taskPoints,
+        points: s.pointsAwarded,
         icon: 'check-circle-outline',
-        ...getCategoryStyle(s.taskCategory),
+        ...getCategoryStyle('Domestic'),
+        submission: s, // Include full submission
       }));
     }
 
@@ -133,8 +138,19 @@ export default function TasksScreen() {
     return data;
   };
 
+  const handleTaskPress = (item: any) => {
+    // Only navigate to TaskDetail for available tasks
+    if (item.task) {
+      navigation.navigate('TaskDetail', { task: item.task });
+    }
+  };
+
   const renderTaskCard = ({ item }: { item: any }) => (
-    <View style={styles.cardContainer}>
+    <TouchableOpacity 
+      style={styles.cardContainer}
+      onPress={() => handleTaskPress(item)}
+      activeOpacity={item.task ? 0.7 : 1}
+    >
       <View style={styles.cardIconBox}>
         <MaterialCommunityIcons name={item.icon || 'clock-outline'} size={24} color={item.iconColor} />
       </View>
@@ -162,7 +178,7 @@ export default function TasksScreen() {
         <Text style={styles.pointsPlus}>+{item.points}</Text>
         <Text style={styles.pointsLabel}>POINTS</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   if (loading) {

@@ -14,7 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getLeaderboard } from '../../services/firestore';
 import type { LeaderboardEntry } from '../../types';
 
-const TABS = ['This month', 'All time'];
+const TABS = ['This month'];
 
 // Assign colors to top 3 + rest
 const PODIUM_STYLES = [
@@ -37,15 +37,14 @@ export default function LeaderboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const mode = activeTab === 'This month' ? 'monthly' : 'alltime';
-      const data = await getLeaderboard(mode);
+      const data = await getLeaderboard();
       setEntries(data);
     } catch (err) {
       console.error('Error loading leaderboard:', err);
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -131,7 +130,7 @@ export default function LeaderboardScreen() {
             )}
           </View>
           <Text style={styles.listSubtext}>
-            {item.room ? `${item.room} • ` : ''}{item.totalTasks} tasks
+            {item.room ? `${item.room} • ` : ''}{item.totalTasksDone} tasks
           </Text>
         </View>
 

@@ -2,16 +2,16 @@
 export interface UserProfile {
   uid: string;
   name: string;
-  email: string;
-  role: 'student' | 'admin';
+  studentId?: string;        // e.g., "STU001"
   room: string;
-  totalPoints: number;
-  monthlyPoints: number;
-  totalTasks: number;
-  streak: number;
-  level: number;
-  joinDate: string;       // ISO string
-  avatarColor: string;
+  role: 'student' | 'admin';
+  pointsThisMonth: number;
+  totalTasksDone: number;
+  streakDays: number;
+  badges: string[];
+  isActive: boolean;
+  isSuspended?: boolean;
+  suspensionEnd?: string | null;  // ISO timestamp or null
 }
 
 // ── Task ──
@@ -22,43 +22,68 @@ export interface Task {
   title: string;
   description: string;
   category: TaskCategory;
-  points: number;
-  deadline: string;       // ISO string
-  createdBy: string;
+  points: number;              // Must be 5, 10, 15, or 20
+  deadline: string | null;     // ISO string or null
+  assignedTo: string;          // "all" or specific UID
+  isTeamTask: boolean;
+  isRepeatable: boolean;
+  isActive: boolean;
   createdAt: string;
-  status: 'active' | 'archived';
 }
 
 // ── Submission ──
 export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
+export type SubmissionType = 'task' | 'self';
 
 export interface Submission {
   id: string;
-  taskId: string;
-  taskTitle: string;      // denormalized for display
-  taskCategory: TaskCategory;
-  taskPoints: number;
+  taskId?: string;             // optional for self-created tasks
   studentId: string;
-  submittedAt: string;
+  type: SubmissionType;        // "task" or "self"
+  title: string;
+  description: string;
+  photoUrl: string;
+  notes: string;
   status: SubmissionStatus;
-  reviewedBy?: string;
-  reviewedAt?: string;
+  rejectionReason: string;
+  pointsAwarded: number;
+  submittedAt: string;
+  reviewedAt: string | null;
 }
 
-// ── Rewards ──
-export interface RewardItem {
+// ── Monthly Results ──
+export interface MonthlyResult {
   id: string;
-  title: string;
-  description: string;
-  pointsCost: number;
-  imageUrl: string;
-  active: boolean;
+  monthKey: string;            // e.g., "2026-04"
+  studentId: string;
+  points: number;
+  rank: number;
+  tasksDone: number;
+  rewardGiven: boolean;
+  rewardNote: string;
 }
 
-export interface MonthlyReward {
-  title: string;
-  description: string;
-  month: string;
+// ── Settings ──
+export interface AppSettings {
+  currentMonth: string;
+  announcement: string;
+  announcementExpiry: string | null;
+  reward1st: string;
+  reward2nd: string;
+  reward3rd: string;
+  lastResetAt: string;
+}
+
+// ── Notification ──
+export type NotificationType = 'approved' | 'rejected' | 'announcement' | 'reward';
+
+export interface Notification {
+  id: string;
+  toUserId: string;
+  type: NotificationType;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
 }
 
 // ── Leaderboard entry (computed) ──
@@ -67,8 +92,7 @@ export interface LeaderboardEntry {
   name: string;
   initials: string;
   room: string;
-  totalTasks: number;
-  points: number;           // monthlyPoints or totalPoints depending on tab
-  avatarColor: string;
+  totalTasksDone: number;
+  points: number;              // pointsThisMonth
   rank: number;
 }

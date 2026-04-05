@@ -21,7 +21,7 @@ const getCategoryIcon = (cat: string) => {
     case 'Domestic': return { icon: 'broom', color: '#388E3C' };
     case 'Sports':   return { icon: 'run', color: '#F57C00' };
     case 'Special':  return { icon: 'star-outline', color: '#6200EE' };
-    default:         return { icon: 'check-circle-outline', color: '#6200EE' };
+    default:         return { icon: 'check-circle-outline', color: '#388E3C' };
   }
 };
 
@@ -96,7 +96,7 @@ export default function ProfileScreen() {
   };
 
   const renderPastTaskItem = ({ item }: { item: Submission }) => {
-    const { icon, color: iconColor } = getCategoryIcon(item.taskCategory);
+    const { icon, color: iconColor } = getCategoryIcon('Domestic'); // Default to domestic for now
     const { label, color: statusColor } = getStatusInfo(item.status);
 
     return (
@@ -105,13 +105,13 @@ export default function ProfileScreen() {
           <MaterialCommunityIcons name={icon as any} size={24} color={iconColor} />
         </View>
         <View style={styles.taskInfo}>
-          <Text style={styles.taskTitle}>{item.taskTitle}</Text>
+          <Text style={styles.taskTitle}>{item.title}</Text>
           <Text style={styles.taskMeta}>
-            {item.taskCategory}  •  {formatDate(item.submittedAt)}
+            {item.type === 'self' ? 'Self-created' : 'Task'}  •  {formatDate(item.submittedAt)}
           </Text>
         </View>
         <View style={styles.taskResultBox}>
-          <Text style={styles.pointsPlus}>+{item.taskPoints}</Text>
+          <Text style={styles.pointsPlus}>+{item.pointsAwarded}</Text>
           <Text style={[styles.statusLabel, { color: statusColor }]}>{label}</Text>
         </View>
       </View>
@@ -127,10 +127,9 @@ export default function ProfileScreen() {
   }
 
   const name = userProfile?.name ?? 'Student';
-  const email = userProfile?.email ?? '';
-  const level = userProfile?.level ?? 1;
-  const totalTasks = userProfile?.totalTasks ?? 0;
-  const totalPoints = userProfile?.totalPoints ?? 0;
+  const studentId = userProfile?.studentId ?? '';
+  const totalTasksDone = userProfile?.totalTasksDone ?? 0;
+  const pointsThisMonth = userProfile?.pointsThisMonth ?? 0;
   const initials = name
     .split(' ')
     .map((n) => n[0])
@@ -153,12 +152,9 @@ export default function ProfileScreen() {
               <View style={styles.avatarCircle}>
                 <Text style={styles.avatarInitials}>{initials}</Text>
               </View>
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelBadgeText}>Lvl {level}</Text>
-              </View>
             </View>
             <Text style={styles.userName}>{name}</Text>
-            <Text style={styles.userEmail}>{email}</Text>
+            <Text style={styles.userEmail}>{studentId}</Text>
 
             <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
               <MaterialCommunityIcons name="pencil-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -168,13 +164,13 @@ export default function ProfileScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
-              <Text style={styles.statNumber}>{totalTasks}</Text>
-              <Text style={styles.statLabelText}>Total Tasks</Text>
+              <Text style={styles.statNumber}>{totalTasksDone}</Text>
+              <Text style={styles.statLabelText}>Tasks Done</Text>
             </View>
             <View style={styles.verticalDivider} />
             <View style={styles.statBox}>
-              <Text style={styles.statNumber}>{totalPoints}</Text>
-              <Text style={styles.statLabelText}>Lifetime Points</Text>
+              <Text style={styles.statNumber}>{pointsThisMonth}</Text>
+              <Text style={styles.statLabelText}>Points This Month</Text>
             </View>
           </View>
         </SafeAreaView>

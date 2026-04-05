@@ -16,34 +16,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getAvailableTasks,
-  getMonthlyReward,
-  getRedeemItems,
+  getAppSettings,
   getLeaderboard,
 } from '../../services/firestore';
-import type { Task, MonthlyReward, RewardItem } from '../../types';
+import type { Task, AppSettings } from '../../types';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const { userProfile, refreshProfile } = useAuth();
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [monthlyReward, setMonthlyReward] = useState<MonthlyReward | null>(null);
-  const [redeemItems, setRedeemItems] = useState<RewardItem[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [rank, setRank] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [taskList, reward, items, leaderboard] = await Promise.all([
+      const [taskList, appSettings, leaderboard] = await Promise.all([
         getAvailableTasks(),
-        getMonthlyReward(),
-        getRedeemItems(),
-        getLeaderboard('monthly'),
+        getAppSettings(),
+        getLeaderboard(),
       ]);
       setTasks(taskList.slice(0, 3)); // Show top 3 as daily quests
-      setMonthlyReward(reward);
-      setRedeemItems(items);
+      setSettings(appSettings);
 
       // Find current user's rank
       if (userProfile) {
@@ -67,8 +63,8 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [loadData, refreshProfile]);
 
-  const formatDeadline = (iso: string) => {
-    if (!iso) return '';
+  const formatDeadline = (iso: string | null) => {
+    if (!iso) return 'No deadline';
     const d = new Date(iso);
     const now = new Date();
     const diffMs = d.getTime() - now.getTime();
@@ -97,8 +93,8 @@ export default function HomeScreen() {
   }
 
   const displayName = userProfile?.name ?? 'Student';
-  const points = userProfile?.monthlyPoints ?? 0;
-  const streak = userProfile?.streak ?? 0;
+  const points = userProfile?.pointsThisMonth ?? 0;
+  const streak = userProfile?.streakDays ?? 0;
 
   return (
     <View style={styles.container}>
@@ -196,15 +192,15 @@ export default function HomeScreen() {
         </View>
 
         {/* REWARD OF THE MONTH */}
-        {monthlyReward && (
+        {settings && (
           <View style={styles.rewardContainer}>
             <View style={styles.rewardCard}>
               <View style={styles.rewardHeader}>
                 <MaterialCommunityIcons name="gift-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.rewardTitleText}>REWARD OF THE MONTH</Text>
+                <Text style={styles.rewardTitleText}>REWARDS THIS MONTH</Text>
               </View>
-              <Text style={styles.rewardMainTitle}>{monthlyReward.title}</Text>
-              <Text style={styles.rewardSubtext}>{monthlyReward.description}</Text>
+              <Text style={styles.rewardMainTitle}>🥇 {settings.reward1st}</Text>
+              <Text style={styles.rewardSubtext}>🥈 {settings.reward2nd} • 🥉 {settings.reward3rd}</Text>
               <TouchableOpacity
                 style={styles.rewardButton}
                 onPress={() => navigation.navigate('Rank')}
@@ -215,36 +211,13 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* REDEEM POINTS */}
-        {redeemItems.length > 0 && (
-          <View style={styles.redeemSection}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Redeem Points</Text>
-              <TouchableOpacity>
-                <Text style={styles.storeLinkText}>Store</Text>
-              </TouchableOpacity>
+        {/* ANNOUNCEMENT */}
+        {settings?.announcement && (
+          <View style={styles.announcementContainer}>
+            <View style={styles.announcementCard}>
+              <MaterialCommunityIcons name="bullhorn-outline" size={24} color="#1976D2" />
+              <Text style={styles.announcementText}>{settings.announcement}</Text>
             </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.redeemScroll}
-            >
-              {redeemItems.map((item) => (
-                <View key={item.id} style={styles.redeemCard}>
-                  <Image source={{ uri: item.imageUrl }} style={styles.redeemImage} />
-                  <View style={styles.redeemInfo}>
-                    <Text style={styles.redeemItemTitle}>{item.title}</Text>
-                    <View style={styles.redeemPointsRow}>
-                      <Text style={styles.redeemCost}>{item.pointsCost} pts</Text>
-                      <TouchableOpacity style={styles.addRedeemButton}>
-                        <MaterialCommunityIcons name="plus" size={20} color="#6200EE" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
           </View>
         )}
 
@@ -476,66 +449,22 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  redeemSection: {
+  announcementContainer: {
+    paddingHorizontal: 20,
     marginBottom: 20,
   },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 15,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#212121',
-  },
-  storeLinkText: {
-    fontSize: 14,
-    color: '#6200EE',
-    fontWeight: '600',
-  },
-  redeemScroll: {
-    paddingHorizontal: 15,
-  },
-  redeemCard: {
-    width: 200,
-    backgroundColor: '#FFFFFF',
+  announcementCard: {
+    backgroundColor: '#E3F2FD',
     borderRadius: 15,
-    marginHorizontal: 5,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  redeemImage: {
-    width: '100%',
-    height: 120,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  redeemInfo: {
-    paddingHorizontal: 5,
-  },
-  redeemItemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 8,
-  },
-  redeemPointsRow: {
+    padding: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  redeemCost: {
+  announcementText: {
+    flex: 1,
+    marginLeft: 12,
     fontSize: 14,
-    color: '#757575',
-  },
-  addRedeemButton: {
-    padding: 2,
+    color: '#1976D2',
+    lineHeight: 20,
   },
 });

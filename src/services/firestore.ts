@@ -5,6 +5,8 @@ import {
   getDocs,
   addDoc,
   setDoc,
+  updateDoc,
+  increment,
   query,
   where,
   orderBy,
@@ -15,14 +17,14 @@ import type {
   UserProfile,
   Task,
   Submission,
-  RewardItem,
-  MonthlyReward,
   LeaderboardEntry,
+  AppSettings,
+  Notification,
 } from '../types';
 
 // ─── Helpers ───
-const tsToISO = (ts: any): string => {
-  if (!ts) return '';
+const tsToISO = (ts: any): string | null => {
+  if (!ts) return null;
   if (ts.toDate) return ts.toDate().toISOString();
   return String(ts);
 };
@@ -42,26 +44,25 @@ export const createDefaultUserProfile = async (
   email: string,
   displayName?: string
 ): Promise<UserProfile> => {
-  const now = new Date().toISOString();
+  // Extract studentId from email (e.g., STU001@tq.app -> STU001)
+  const studentId = email.split('@')[0].toUpperCase();
+  
   const profile: UserProfile = {
     uid,
-    name: displayName || email.split('@')[0],
-    email,
-    role: 'student',
+    name: displayName || studentId,
+    studentId,
     room: '',
-    totalPoints: 0,
-    monthlyPoints: 0,
-    totalTasks: 0,
-    streak: 0,
-    level: 1,
-    joinDate: now,
-    avatarColor: '#4CAF50',
+    role: 'student',
+    pointsThisMonth: 0,
+    totalTasksDone: 0,
+    streakDays: 0,
+    badges: [],
+    isActive: true,
+    isSuspended: false,
+    suspensionEnd: null,
   };
 
-  await setDoc(doc(db, 'users', uid), {
-    ...profile,
-    joinDate: Timestamp.now(),
-  });
+  await setDoc(doc(db, 'users', uid), profile);
 
   return profile;
 };
@@ -73,25 +74,31 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
   return {
     uid: snap.id,
     name: d.name ?? '',
-    email: d.email ?? '',
-    role: d.role ?? 'student',
+    studentId: d.studentId ?? '',
     room: d.room ?? '',
-    totalPoints: d.totalPoints ?? 0,
-    monthlyPoints: d.monthlyPoints ?? 0,
-    totalTasks: d.totalTasks ?? 0,
-    streak: d.streak ?? 0,
-    level: d.level ?? 1,
-    joinDate: tsToISO(d.joinDate),
-    avatarColor: d.avatarColor ?? '#FFB300',
+    role: d.role ?? 'student',
+    pointsThisMonth: d.pointsThisMonth ?? 0,
+    totalTasksDone: d.totalTasksDone ?? 0,
+    streakDays: d.streakDays ?? 0,
+    badges: d.badges ?? [],
+    isActive: d.isActive ?? true,
+    isSuspended: d.isSuspended ?? false,
+    suspensionEnd: tsToISO(d.suspensionEnd),
   };
+};
+
+// Check if user is suspended
+export const isUserSuspended = (profile: UserProfile): boolean => {
+  if (!profile.isSuspended) return false;
+  if (!profile.suspensionEnd) return true;
+  return new Date() < new Date(profile.suspensionEnd);
 };
 
 // ─── Tasks ───
 export const getAvailableTasks = async (): Promise<Task[]> => {
   const q = query(
     collection(db, 'tasks'),
-    where('status', '==', 'active'),
-    orderBy('deadline', 'asc'),
+    where('isActive', '==', true),
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
@@ -100,12 +107,14 @@ export const getAvailableTasks = async (): Promise<Task[]> => {
       id: d.id,
       title: data.title ?? '',
       description: data.description ?? '',
-      category: data.category ?? 'Academic',
-      points: data.points ?? 0,
+      category: data.category ?? 'Domestic',
+      points: data.points ?? 10,
       deadline: tsToISO(data.deadline),
-      createdBy: data.createdBy ?? '',
-      createdAt: tsToISO(data.createdAt),
-      status: data.status ?? 'active',
+      assignedTo: data.assignedTo ?? 'all',
+      isTeamTask: data.isTeamTask ?? false,
+      isRepeatable: data.isRepeatable ?? false,
+      isActive: data.isActive ?? true,
+      createdAt: tsToISO(data.createdAt) ?? '',
     };
   });
 };
@@ -135,14 +144,17 @@ export const getStudentSubmissions = async (
     const data = d.data();
     return {
       id: d.id,
-      taskId: data.taskId ?? '',
-      taskTitle: data.taskTitle ?? '',
-      taskCategory: data.taskCategory ?? 'Academic',
-      taskPoints: data.taskPoints ?? 0,
+      taskId: data.taskId ?? undefined,
       studentId: data.studentId ?? '',
-      submittedAt: tsToISO(data.submittedAt),
+      type: data.type ?? 'task',
+      title: data.title ?? '',
+      description: data.description ?? '',
+      photoUrl: data.photoUrl ?? '',
+      notes: data.notes ?? '',
       status: data.status ?? 'pending',
-      reviewedBy: data.reviewedBy,
+      rejectionReason: data.rejectionReason ?? '',
+      pointsAwarded: data.pointsAwarded ?? 0,
+      submittedAt: tsToISO(data.submittedAt) ?? '',
       reviewedAt: tsToISO(data.reviewedAt),
     };
   });
@@ -160,46 +172,148 @@ export const getCompletedSubmissions = async (uid: string): Promise<Submission[]
     const data = d.data();
     return {
       id: d.id,
-      taskId: data.taskId ?? '',
-      taskTitle: data.taskTitle ?? '',
-      taskCategory: data.taskCategory ?? 'Academic',
-      taskPoints: data.taskPoints ?? 0,
+      taskId: data.taskId ?? undefined,
       studentId: data.studentId ?? '',
-      submittedAt: tsToISO(data.submittedAt),
+      type: data.type ?? 'task',
+      title: data.title ?? '',
+      description: data.description ?? '',
+      photoUrl: data.photoUrl ?? '',
+      notes: data.notes ?? '',
       status: 'approved' as const,
-      reviewedBy: data.reviewedBy,
+      rejectionReason: '',
+      pointsAwarded: data.pointsAwarded ?? 0,
+      submittedAt: tsToISO(data.submittedAt) ?? '',
       reviewedAt: tsToISO(data.reviewedAt),
     };
   });
 };
 
+// Submit an assigned task
 export const submitTask = async (
   taskId: string,
   uid: string,
-  taskTitle: string,
-  taskCategory: string,
-  taskPoints: number,
+  task: Task,
+  photoUrl?: string,
+  notes?: string,
 ) => {
-  return addDoc(collection(db, 'submissions'), {
+  const submissionRef = await addDoc(collection(db, 'submissions'), {
     taskId,
     studentId: uid,
-    taskTitle,
-    taskCategory,
-    taskPoints,
-    submittedAt: Timestamp.now(),
+    type: 'task',
+    title: task.title,
+    description: task.description,
+    photoUrl: photoUrl ?? '',
+    notes: notes ?? '',
     status: 'pending',
+    rejectionReason: '',
+    pointsAwarded: 0,  // Set by admin on approval
+    submittedAt: Timestamp.now(),
+    reviewedAt: null,
+  });
+
+  return submissionRef;
+};
+
+// Submit a self-created task
+export const submitSelfTask = async (
+  uid: string,
+  title: string,
+  description: string,
+  photoUrl?: string,
+  notes?: string,
+) => {
+  const submissionRef = await addDoc(collection(db, 'submissions'), {
+    taskId: null,
+    studentId: uid,
+    type: 'self',
+    title,
+    description,
+    photoUrl: photoUrl ?? '',
+    notes: notes ?? '',
+    status: 'pending',
+    rejectionReason: '',
+    pointsAwarded: 0,  // Set by admin on approval
+    submittedAt: Timestamp.now(),
+    reviewedAt: null,
+  });
+
+  return submissionRef;
+};
+
+// ─── Admin: Approve/Reject Submissions ───
+export const approveSubmission = async (
+  submissionId: string,
+  pointsAwarded: number
+) => {
+  const submissionRef = doc(db, 'submissions', submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+  
+  if (!submissionSnap.exists()) {
+    throw new Error('Submission not found');
+  }
+
+  const submission = submissionSnap.data();
+  const studentId = submission.studentId;
+
+  // Update submission status
+  await updateDoc(submissionRef, {
+    status: 'approved',
+    pointsAwarded,
+    reviewedAt: Timestamp.now(),
+  });
+
+  // Award points to the student
+  await updateDoc(doc(db, 'users', studentId), {
+    pointsThisMonth: increment(pointsAwarded),
+    totalTasksDone: increment(1),
+  });
+
+  // Create notification
+  await addDoc(collection(db, 'notifications'), {
+    toUserId: studentId,
+    type: 'approved',
+    message: `Task approved +${pointsAwarded} points`,
+    isRead: false,
+    createdAt: Timestamp.now(),
+  });
+};
+
+export const rejectSubmission = async (
+  submissionId: string,
+  reason?: string
+) => {
+  const submissionRef = doc(db, 'submissions', submissionId);
+  const submissionSnap = await getDoc(submissionRef);
+  
+  if (!submissionSnap.exists()) {
+    throw new Error('Submission not found');
+  }
+
+  const studentId = submissionSnap.data().studentId;
+
+  await updateDoc(submissionRef, {
+    status: 'rejected',
+    rejectionReason: reason ?? '',
+    reviewedAt: Timestamp.now(),
+  });
+
+  // Create notification
+  await addDoc(collection(db, 'notifications'), {
+    toUserId: studentId,
+    type: 'rejected',
+    message: reason ? `Task rejected: ${reason}` : 'Task rejected',
+    isRead: false,
+    createdAt: Timestamp.now(),
   });
 };
 
 // ─── Leaderboard ───
-export const getLeaderboard = async (
-  mode: 'monthly' | 'alltime',
-): Promise<LeaderboardEntry[]> => {
-  const field = mode === 'monthly' ? 'monthlyPoints' : 'totalPoints';
+export const getLeaderboard = async (): Promise<LeaderboardEntry[]> => {
   const q = query(
     collection(db, 'users'),
     where('role', '==', 'student'),
-    orderBy(field, 'desc'),
+    where('isActive', '==', true),
+    orderBy('pointsThisMonth', 'desc'),
   );
   const snap = await getDocs(q);
   return snap.docs.map((d, idx) => {
@@ -209,38 +323,52 @@ export const getLeaderboard = async (
       name: data.name ?? '',
       initials: getInitials(data.name ?? ''),
       room: data.room ?? '',
-      totalTasks: data.totalTasks ?? 0,
-      points: data[field] ?? 0,
-      avatarColor: data.avatarColor ?? '#FFB300',
+      totalTasksDone: data.totalTasksDone ?? 0,
+      points: data.pointsThisMonth ?? 0,
       rank: idx + 1,
     };
   });
 };
 
-// ─── Rewards ───
-export const getRedeemItems = async (): Promise<RewardItem[]> => {
-  const q = query(collection(db, 'rewards'), where('active', '==', true));
+// ─── Settings ───
+export const getAppSettings = async (): Promise<AppSettings | null> => {
+  const snap = await getDoc(doc(db, 'settings', 'global'));
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  return {
+    currentMonth: d.currentMonth ?? '',
+    announcement: d.announcement ?? '',
+    announcementExpiry: tsToISO(d.announcementExpiry),
+    reward1st: d.reward1st ?? '',
+    reward2nd: d.reward2nd ?? '',
+    reward3rd: d.reward3rd ?? '',
+    lastResetAt: tsToISO(d.lastResetAt) ?? '',
+  };
+};
+
+// ─── Notifications ───
+export const getNotifications = async (uid: string): Promise<Notification[]> => {
+  const q = query(
+    collection(db, 'notifications'),
+    where('toUserId', '==', uid),
+    orderBy('createdAt', 'desc'),
+  );
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const data = d.data();
     return {
       id: d.id,
-      title: data.title ?? '',
-      description: data.description ?? '',
-      pointsCost: data.pointsCost ?? 0,
-      imageUrl: data.imageUrl ?? '',
-      active: data.active ?? true,
+      toUserId: data.toUserId ?? '',
+      type: data.type ?? 'announcement',
+      message: data.message ?? '',
+      isRead: data.isRead ?? false,
+      createdAt: tsToISO(data.createdAt) ?? '',
     };
   });
 };
 
-export const getMonthlyReward = async (): Promise<MonthlyReward | null> => {
-  const snap = await getDoc(doc(db, 'settings', 'monthlyReward'));
-  if (!snap.exists()) return null;
-  const d = snap.data();
-  return {
-    title: d.title ?? '',
-    description: d.description ?? '',
-    month: d.month ?? '',
-  };
+export const markNotificationRead = async (notificationId: string) => {
+  await updateDoc(doc(db, 'notifications', notificationId), {
+    isRead: true,
+  });
 };
