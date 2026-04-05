@@ -1,5 +1,5 @@
 import { View, Text } from "react-native";
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '@/theme';
+import { COLORS, SPACING, TYPOGRAPHY } from '../theme';
 
 export default function Badge({ label, backgroundColor = COLORS.accent, textColor = COLORS.black }: any) {
   return (
@@ -7,15 +7,12 @@ export default function Badge({ label, backgroundColor = COLORS.accent, textColo
       style={{
         backgroundColor,
         paddingHorizontal: SPACING.md,
-        paddingVertical: 6,
+        paddingVertical: 4,
         borderRadius: 20,
-        shadowColor: COLORS.black,
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
+        alignSelf: 'flex-start',
       }}
     >
-      <Text style={{ ...TYPOGRAPHY.small, color: textColor }}>
+      <Text style={{ ...TYPOGRAPHY.badge, color: textColor, textTransform: 'uppercase' }}>
         {label}
       </Text>
     </View>
