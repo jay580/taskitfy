@@ -12,12 +12,13 @@ import {
   Modal,
   TextInput,
   Animated,
-  Easing,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
@@ -27,29 +28,30 @@ import {
   submitSelfTask,
 } from '../../services/firestore';
 import type { Task, Submission, TaskCategory } from '../../types';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
 import FadeInView from '../../components/FadeInView';
+import TaskCard from '../../components/TaskCard';
 import { getTaskStatus, getTaskStatusLabel } from '../../utils/taskStatus';
 
 const PRIMARY_TABS = ['Available', 'Submissions', 'Completed'];
 const CATEGORIES = ['All', 'Academic', 'Domestic', 'Sports', 'Special'];
 
-const getCategoryStyle = (cat: TaskCategory) => {
+const getCategoryColor = (cat: string) => {
   switch (cat) {
-    case 'Academic': return { iconColor: COLORS.link, tagColor: COLORS.surface, tagTextColor: COLORS.link };
-    case 'Domestic': return { iconColor: COLORS.success, tagColor: COLORS.surface, tagTextColor: COLORS.success };
-    case 'Sports':   return { iconColor: COLORS.warning, tagColor: COLORS.surface, tagTextColor: COLORS.warning };
-    case 'Special':  return { iconColor: COLORS.secondary, tagColor: COLORS.surface, tagTextColor: COLORS.secondary };
-    default:         return { iconColor: COLORS.secondary, tagColor: COLORS.surface, tagTextColor: COLORS.secondary };
+    case 'Academic': return COLORS.link;
+    case 'Domestic': return COLORS.success;
+    case 'Sports': return COLORS.warning;
+    case 'Special': return COLORS.secondary;
+    default: return COLORS.secondary;
   }
 };
 
 const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending':  return COLORS.warning;
+  switch (status?.toLowerCase()) {
+    case 'pending': return COLORS.warning;
     case 'rejected': return COLORS.error;
     case 'approved': return COLORS.success;
-    default:         return COLORS.muted;
+    default: return COLORS.muted;
   }
 };
 
@@ -59,7 +61,7 @@ const formatDate = (iso: string | null) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-export default function TasksScreen() {
+export default function TasksScreen({ route }: any) {
   const { userProfile } = useAuth();
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
@@ -78,13 +80,10 @@ export default function TasksScreen() {
   const [selfTitle, setSelfTitle] = useState('');
   const [selfDesc, setSelfDesc] = useState('');
   const [selfSubmitting, setSelfSubmitting] = useState(false);
-
-  // FAB animation
-  const fabScale = useRef(new Animated.Value(1)).current;
-
-  // Self-task photo state
   const [selfPhotos, setSelfPhotos] = useState<string[]>([]);
   const [selfPhotoUploading, setSelfPhotoUploading] = useState(false);
+
+  const fabScale = useRef(new Animated.Value(1)).current;
 
   const loadData = useCallback(async () => {
     if (!uid) return;
@@ -107,6 +106,15 @@ export default function TasksScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (route?.params?.category) {
+      setActiveCategory(route.params.category);
+      setActiveTab('Available');
+      // Clear param to prevent sticky behavior when navigating internally
+      navigation.setParams({ category: undefined });
+    }
+  }, [route?.params?.category]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -155,128 +163,98 @@ export default function TasksScreen() {
   };
 
   const handleFabPressIn = () => {
-    Animated.spring(fabScale, {
-      toValue: 0.9,
-      tension: 120,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(fabScale, { toValue: 0.9, tension: 120, friction: 8, useNativeDriver: true }).start();
   };
 
   const handleFabPressOut = () => {
-    Animated.spring(fabScale, {
-      toValue: 1,
-      tension: 120,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(fabScale, { toValue: 1, tension: 120, friction: 8, useNativeDriver: true }).start();
   };
 
   const getDisplayData = (): any[] => {
     let data: any[] = [];
-
     if (activeTab === 'Available') {
-      data = availableTasks.map(t => ({
-        id: t.id,
-        title: t.title,
-        category: t.category,
-        date: '',
-        points: t.points,
-        icon: getTaskStatus({ createdAt: t.createdAt, duration: t.duration, durationType: t.durationType }) === 'expired'
-          ? 'alert-circle-outline'
-          : 'clock-outline',
-        task: t,
-        statusLabel: getTaskStatusLabel({ createdAt: t.createdAt, duration: t.duration, durationType: t.durationType }),
-        taskStatus: getTaskStatus({ createdAt: t.createdAt, duration: t.duration, durationType: t.durationType }),
-        ...getCategoryStyle(t.category),
-      }));
+      data = availableTasks;
     } else if (activeTab === 'Submissions') {
-      data = submissions.map(s => ({
-        id: s.id,
-        title: s.title,
-        category: 'Domestic' as const,
-        date: formatDate(s.submittedAt),
-        points: s.pointsAwarded,
-        icon: s.status === 'rejected' ? 'close-circle-outline' : 'clock-outline',
-        ...getCategoryStyle('Domestic'),
-        status: s.status.charAt(0).toUpperCase() + s.status.slice(1),
-        statusColor: getStatusColor(s.status),
-        submission: s,
-        type: s.type,
-      }));
+      data = submissions;
     } else {
-      data = completed.map(s => ({
-        id: s.id,
-        title: s.title,
-        category: 'Domestic' as const,
-        date: formatDate(s.submittedAt),
-        points: s.pointsAwarded,
-        icon: 'check-circle-outline',
-        ...getCategoryStyle('Domestic'),
-        submission: s,
-      }));
+      data = completed;
     }
 
-    if (activeCategory !== 'All') {
-      data = data.filter(task => task.category === activeCategory);
+    // Only apply category filter on 'Available' tab, since Submissions don't strictly retain category in schema
+    if (activeCategory !== 'All' && activeTab === 'Available') {
+      data = data.filter(item => item.category === activeCategory);
     }
     return data;
   };
 
-  const handleTaskPress = (item: any) => {
-    if (item.task) {
-      navigation.navigate('TaskDetail', { task: item.task });
-    }
-  };
-
-  const renderTaskCard = ({ item, index }: { item: any; index: number }) => {
-    // Fade in + upward motion
+  const renderAvailableTask = (item: Task, index: number) => {
+    const isExpired = getTaskStatus({ createdAt: item.createdAt, duration: item.duration, durationType: item.durationType }) === 'expired';
+    const rawTime = getTaskStatusLabel({ createdAt: item.createdAt, duration: item.duration, durationType: item.durationType }) || '';
+    const timeText = isExpired ? 'Expired' : rawTime.includes('ago') ? rawTime : `⏳ Ends in ${rawTime}`;
     return (
       <FadeInView delay={index * 80}>
-        <AnimatedPressableCard item={item} onPress={() => handleTaskPress(item)} />
+        <TaskCard
+          title={item.title}
+          category={item.category}
+          timeText={timeText}
+          points={item.points}
+          isExpired={isExpired}
+          onPress={() => navigation.navigate('TaskDetail', { task: item })}
+        />
+      </FadeInView>
+    );
+  };
+
+  const renderSubmissionCard = (item: Submission, index: number) => {
+    const color = getCategoryColor(item.category || 'Domestic');
+    const statusColor = getStatusColor(item.status);
+    return (
+      <FadeInView delay={index * 80}>
+        <SubmissionGlassCard 
+          item={item} 
+          color={color} 
+          statusColor={statusColor} 
+          onPress={undefined} // Submissions don't have detail page yet
+        />
       </FadeInView>
     );
   };
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={COLORS.secondary} />
-      </View>
+      </LinearGradient>
     );
   }
 
+  const data = getDisplayData();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.headerBackground}>
-        <SafeAreaView edges={['top']}>
-          <View style={styles.headerTopRow}>
-            <Text style={styles.headerTitle}>Tasks</Text>
-            <TouchableOpacity>
-              <MaterialCommunityIcons name="dots-horizontal" size={28} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
+    <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.container}>
+      <SafeAreaView edges={['top']} style={styles.headerArea}>
+        <Text style={styles.headerTitle}>Tasks</Text>
 
-          <View style={styles.segmentedControl}>
-            {PRIMARY_TABS.map((tab) => {
-              const isActive = activeTab === tab;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
-                  onPress={() => setActiveTab(tab)}
-                >
-                  <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
-                    {tab}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </SafeAreaView>
-      </View>
+        {/* Glass Segmented Control */}
+        <View style={styles.segmentedControl}>
+          {PRIMARY_TABS.map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
+                onPress={() => setActiveTab(tab)}
+              >
+                <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
+                  {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </SafeAreaView>
 
-      {/* Category Filters */}
+      {/* Category Glass Pills */}
       <View style={styles.filterSection}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
           {CATEGORIES.map(cat => {
@@ -287,7 +265,7 @@ export default function TasksScreen() {
                 style={[styles.filterPill, isActive ? styles.filterPillActive : styles.filterPillInactive]}
                 onPress={() => setActiveCategory(cat)}
               >
-                <Text style={isActive ? styles.filterPillTextActive : styles.filterPillTextInactive}>
+                <Text style={isActive ? styles.filterTextActive : styles.filterTextInactive}>
                   {cat}
                 </Text>
               </TouchableOpacity>
@@ -296,23 +274,33 @@ export default function TasksScreen() {
         </ScrollView>
       </View>
 
-      {/* Task List */}
       <FlatList
-        data={getDisplayData()}
-        keyExtractor={(item, index) => item.id || index.toString()}
-        renderItem={renderTaskCard}
+        data={data as any}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, index }) => 
+          activeTab === 'Available' 
+            ? renderAvailableTask(item as Task, index) 
+            : renderSubmissionCard(item as Submission, index)
+        }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.secondary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.white} />}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="clipboard-text-off" size={48} color={COLORS.muted} />
-            <Text style={styles.emptyText}>No tasks found.</Text>
-          </View>
+          <Animated.View style={styles.emptyContainer}>
+            <View style={{ shadowColor: COLORS.secondary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 30 }}>
+              <MaterialCommunityIcons name="star-shooting" size={72} color={COLORS.secondary} />
+            </View>
+            <Text style={styles.emptyText}>Nothing here right now!</Text>
+            {activeTab !== 'Available' && (
+              <TouchableOpacity style={{ marginTop: SPACING.md, padding: 10 }} onPress={() => { setActiveTab('Available'); setActiveCategory('All'); }}>
+                <Text style={{ color: COLORS.link, fontWeight: 'bold' }}>Explore More Quests</Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
         }
       />
 
-      {/* Self-task FAB */}
+      {/* Self-task Glow FAB */}
       <Animated.View style={[styles.fabContainer, { transform: [{ scale: fabScale }] }]}>
         <TouchableOpacity
           style={styles.fab}
@@ -321,170 +309,122 @@ export default function TasksScreen() {
           onPressOut={handleFabPressOut}
           onPress={() => setSelfTaskModalVisible(true)}
         >
+          <LinearGradient
+            colors={[COLORS.secondary, '#C53030']}
+            style={StyleSheet.absoluteFillObject}
+          />
           <MaterialCommunityIcons name="plus" size={28} color={COLORS.white} />
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Self-Task Modal */}
       <Modal visible={selfTaskModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelfTaskModalVisible(false)}>
-        <View style={styles.selfTaskModal}>
-          <View style={styles.selfTaskHeader}>
-            <Text style={styles.selfTaskTitle}>Create Self Task</Text>
-            <TouchableOpacity onPress={() => setSelfTaskModalVisible(false)} style={styles.selfTaskCloseBtn}>
-              <MaterialCommunityIcons name="close" size={24} color={COLORS.textDark} />
-            </TouchableOpacity>
-          </View>
+        <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.selfTaskModal}>
+          <SafeAreaView style={{flex: 1}}>
+            <View style={styles.selfTaskHeader}>
+              <Text style={styles.selfTaskTitle}>Create Self Task</Text>
+              <TouchableOpacity onPress={() => setSelfTaskModalVisible(false)} style={styles.selfTaskCloseBtn}>
+                <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.selfTaskContent}>
-            <Text style={styles.selfTaskLabel}>What did you do?</Text>
-            <TextInput
-              style={styles.selfTaskInput}
-              placeholder="Task Title"
-              placeholderTextColor={COLORS.muted}
-              value={selfTitle}
-              onChangeText={setSelfTitle}
-            />
+            <ScrollView contentContainerStyle={styles.selfTaskContent}>
+              <Text style={styles.selfTaskLabel}>What did you do?</Text>
+              <TextInput
+                style={styles.selfTaskInput}
+                placeholder="Task Title"
+                placeholderTextColor={COLORS.mutedText}
+                value={selfTitle}
+                onChangeText={setSelfTitle}
+              />
 
-            <Text style={styles.selfTaskLabel}>Describe your contribution</Text>
-            <TextInput
-              style={[styles.selfTaskInput, { height: 120, textAlignVertical: 'top' }]}
-              placeholder="What did you do and why does it matter?"
-              placeholderTextColor={COLORS.muted}
-              value={selfDesc}
-              onChangeText={setSelfDesc}
-              multiline
-            />
+              <Text style={styles.selfTaskLabel}>Describe your contribution</Text>
+              <TextInput
+                style={[styles.selfTaskInput, { height: 120, textAlignVertical: 'top' }]}
+                placeholder="What did you do and why does it matter?"
+                placeholderTextColor={COLORS.mutedText}
+                value={selfDesc}
+                onChangeText={setSelfDesc}
+                multiline
+              />
 
-            {/* Photo upload */}
-            <Text style={styles.selfTaskLabel}>Photo (optional)</Text>
-            <TouchableOpacity
-              style={[
-                styles.selfTaskInput,
-                { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 48 },
-                selfPhotoUploading && { opacity: 0.6 },
-              ]}
-              onPress={handlePickPhoto}
-              disabled={selfPhotoUploading}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="camera" size={20} color={COLORS.link} />
-              <Text style={{ color: COLORS.link, marginLeft: 8, fontWeight: '600' }}>
-                {selfPhotos.length > 0 ? 'Add/Change Photos' : 'Upload Photos'}
-              </Text>
-            </TouchableOpacity>
-            {selfPhotos.length > 0 ? (
-              <View style={{ marginVertical: 10 }}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Text style={styles.selfTaskLabel}>Photo (optional)</Text>
+              <TouchableOpacity style={styles.photoUploadBtn} onPress={handlePickPhoto} disabled={selfPhotoUploading}>
+                <MaterialCommunityIcons name="camera" size={20} color={COLORS.white} />
+                <Text style={styles.photoUploadText}>
+                  {selfPhotos.length > 0 ? 'Add/Change Photos' : 'Upload Photos'}
+                </Text>
+              </TouchableOpacity>
+              
+              {selfPhotos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical: 10}}>
                   {selfPhotos.map((uri, index) => (
                     <View key={`${uri}-${index}`} style={{ marginRight: 10, position: 'relative' }}>
-                      <Image source={{ uri }} style={{ width: 110, height: 110, borderRadius: 10 }} />
-                      <TouchableOpacity
-                        onPress={() => setSelfPhotos((prev) => prev.filter((_, i) => i !== index))}
-                        style={{ position: 'absolute', right: 4, top: 4, backgroundColor: COLORS.surface, borderRadius: 10 }}
-                      >
+                      <Image source={{ uri }} style={{ width: 110, height: 110, borderRadius: RADIUS.md }} />
+                      <TouchableOpacity onPress={() => setSelfPhotos(p => p.filter((_, i) => i !== index))} style={styles.photoRemoveBtn}>
                         <MaterialCommunityIcons name="close-circle" size={20} color={COLORS.error} />
                       </TouchableOpacity>
                     </View>
                   ))}
                 </ScrollView>
-              </View>
-            ) : null}
+              )}
 
-            <View style={styles.selfTaskInfo}>
-              <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.link} />
-              <Text style={styles.selfTaskInfoText}>
-                Points will be awarded by the admin after review.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.selfTaskSubmitBtn, selfSubmitting && { opacity: 0.6 }]}
-              onPress={handleSubmitSelfTask}
-              disabled={selfSubmitting}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="send" size={20} color={COLORS.white} />
-              <Text style={styles.selfTaskSubmitText}>
-                {selfSubmitting ? "Submitting..." : "Submit for Review"}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+              <TouchableOpacity
+                style={[styles.selfTaskSubmitBtn, selfSubmitting && { opacity: 0.6 }]}
+                onPress={handleSubmitSelfTask}
+                disabled={selfSubmitting}
+              >
+                <MaterialCommunityIcons name="send" size={20} color={COLORS.white} />
+                <Text style={styles.selfTaskSubmitText}>{selfSubmitting ? "Submitting..." : "Submit for Review"}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </SafeAreaView>
+        </LinearGradient>
       </Modal>
-    </View>
+    </LinearGradient>
   );
 }
 
-// Animated pressable card component for spring scale effect
-function AnimatedPressableCard({ item, onPress }: { item: any; onPress: () => void }) {
+function SubmissionGlassCard({ item, color, statusColor, onPress }: { item: Submission, color: string, statusColor: string, onPress?: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.97,
-      tension: 120,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      tension: 120,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
-  };
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
-        style={styles.cardContainer}
-        onPress={item.task ? onPress : undefined}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={item.task ? 0.9 : 1}
+        style={styles.card}
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start()}
+        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start()}
+        activeOpacity={0.9}
+        disabled={!onPress}
       >
-        {item.status && (
-          <View style={[styles.pendingBadge, { backgroundColor: item.statusColor || COLORS.warning }]}> 
-            <Text style={styles.pendingBadgeText}>{item.status}</Text>
-          </View>
-        )}
-
-        <View style={styles.cardIconBox}>
-          <MaterialCommunityIcons name={item.icon || 'clock-outline'} size={24} color={item.iconColor} />
+        <LinearGradient colors={[COLORS.gradientCardTop, COLORS.gradientCardBottom]} style={styles.topLight} />
+        
+        {/* Adjusted pending badge length fix */}
+        <View style={[styles.pendingBadge, { backgroundColor: statusColor }]}>
+          <Text style={styles.pendingBadgeText} numberOfLines={1}>
+            {item.status.toUpperCase()}
+          </Text>
         </View>
 
-        <View style={styles.cardInfo}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            {item.type === 'self' && (
-              <View style={{ backgroundColor: COLORS.link, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                <Text style={{ color: COLORS.white, fontSize: 9, fontWeight: '800' }}>SELF</Text>
-              </View>
-            )}
+        <View style={{flexDirection: 'row', gap: SPACING.md, alignItems: 'center'}}>
+          <View style={styles.leftCol}>
+            <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+            <View style={{flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap', alignItems: 'center'}}>
+              <Text style={styles.timeText}>{formatDate(item.submittedAt)}</Text>
+              {item.type === 'self' && (
+                <View style={styles.selfTag}>
+                  <Text style={styles.selfTagText}>SELF</Text>
+                </View>
+              )}
+            </View>
           </View>
-          <View style={styles.cardTagsRow}>
-            {item.category && item.tagColor && (
-              <View style={[styles.categoryTag, { backgroundColor: item.tagColor }]}>
-                <Text style={[styles.categoryTagText, { color: item.tagTextColor || '#333' }]}>
-                  {item.category}
-                </Text>
-              </View>
-            )}
-            {item.date ? <Text style={styles.dateText}>• {item.date}</Text> : null}
-          </View>
-          {item.statusLabel ? (
-            <Text style={{ color: item.taskStatus === 'expired' ? COLORS.error : COLORS.link, fontSize: 11, marginTop: 2 }}>
-              {item.statusLabel}
-            </Text>
-          ) : null}
-        </View>
 
-        <View style={styles.cardPointsBox}>
-          <Text style={styles.pointsPlus}>+{item.points}</Text>
-          <Text style={styles.pointsLabel}>POINTS</Text>
+          <View style={styles.rightCol}>
+            <View style={styles.pointsBadge}>
+              <Text style={[styles.pointsPlus, { color: COLORS.white }]}>{item.pointsAwarded || 0}</Text>
+              <MaterialCommunityIcons name="star" size={14} color={COLORS.gold} style={{marginLeft: 2}} />
+            </View>
+          </View>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -494,267 +434,266 @@ function AnimatedPressableCard({ item, onPress }: { item: any; onPress: () => vo
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.backgroundPrimary,
   },
-  headerBackground: {
-    backgroundColor: COLORS.surface,
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
+  headerArea: {
     paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
   },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
   headerTitle: {
-    ...TYPOGRAPHY.hero,
-    color: COLORS.text,
+    ...TYPOGRAPHY.header,
+    fontSize: 28,
+    color: COLORS.white,
+    marginBottom: SPACING.lg,
   },
   segmentedControl: {
     flexDirection: 'row',
-    backgroundColor: COLORS.overlayDark,
-    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.glassBackgroundLv1,
+    borderRadius: RADIUS.lg,
     padding: 4,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
   },
   segmentButton: {
     flex: 1,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
   },
   segmentButtonActive: {
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.glassHighlight,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   segmentText: {
     ...TYPOGRAPHY.small,
     fontWeight: '600',
-    color: COLORS.muted,
+    color: COLORS.mutedText,
   },
   segmentTextActive: {
-    color: COLORS.primary,
+    color: COLORS.white,
   },
   filterSection: {
-    marginTop: -SPACING.lg,
+    marginBottom: SPACING.md,
   },
   filterScroll: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
   },
   filterPill: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.lg,
-    marginHorizontal: 5,
-    ...SHADOWS.card,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: SPACING.sm,
   },
   filterPillActive: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.glassHighlight,
+    borderColor: COLORS.link,
   },
   filterPillInactive: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.glassBackgroundLv3,
+    borderColor: COLORS.glassBorder,
   },
-  filterPillTextActive: {
+  filterTextActive: {
+    ...TYPOGRAPHY.small,
+    fontWeight: '700',
+    color: COLORS.link,
+  },
+  filterTextInactive: {
     ...TYPOGRAPHY.small,
     fontWeight: '600',
-    color: COLORS.white,
-  },
-  filterPillTextInactive: {
-    ...TYPOGRAPHY.small,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: COLORS.mutedText,
   },
   listContent: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: 100,
+    paddingBottom: 220, // Clear the navbar and FAB completely
   },
-  cardContainer: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    flexDirection: 'row',
+  emptyContainer: {
+    padding: SPACING.xl,
     alignItems: 'center',
-    marginBottom: SPACING.md,
-    position: 'relative',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    marginTop: SPACING.xl,
+  },
+  emptyText: {
+    ...TYPOGRAPHY.body,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  fabContainer: {
+    position: 'absolute',
+    bottom: 120, // Safely above new 100px navbar
+    right: 20,
+    zIndex: 100,
+  },
+  fab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.secondary, // fallback
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.secondary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
     overflow: 'hidden',
   },
-  cardIconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: COLORS.surfaceAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
+  card: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+    backgroundColor: COLORS.glassBackgroundLv2,
   },
-  cardInfo: {
+  topLight: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: '50%'
+  },
+  leftCol: {
     flex: 1,
+  },
+  rightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   cardTitle: {
     ...TYPOGRAPHY.body,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
+    fontWeight: '700',
+    color: COLORS.white,
+    marginBottom: SPACING.sm,
+    letterSpacing: 0.3,
   },
-  cardTagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  categoryTag: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 3,
-    borderRadius: RADIUS.sm,
-  },
-  categoryTagText: {
-    ...TYPOGRAPHY.badge,
-  },
-  dateText: {
+  timeText: {
     ...TYPOGRAPHY.small,
-    color: COLORS.muted,
-    marginLeft: SPACING.xs,
-  },
-  statusText: {
-    ...TYPOGRAPHY.small,
-    fontWeight: 'bold',
+    color: COLORS.mutedText,
+    fontWeight: '500',
   },
   pendingBadge: {
     position: 'absolute',
-    right: 10,
-    top: 10,
-    maxWidth: '60%',
+    right: 12, // Strict padding fix
+    top: 12,
+    maxWidth: 90, // Fix badge overflow constraint
     zIndex: 10,
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   pendingBadgeText: {
     color: COLORS.white,
     fontSize: 10,
     fontWeight: '800',
   },
-  cardPointsBox: {
-    alignItems: 'flex-end',
-    marginLeft: SPACING.sm,
+  pointsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    marginTop: 18, // Since pendingBadge is absolute on top
   },
   pointsPlus: {
-    ...TYPOGRAPHY.cardTitle,
-    color: COLORS.link,
+    fontSize: 16,
+    fontWeight: '800',
   },
-  pointsLabel: {
-    ...TYPOGRAPHY.badge,
-    color: COLORS.muted,
-    marginTop: 2,
+  selfTag: {
+    backgroundColor: COLORS.link,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  emptyContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center',
+  selfTagText: {
+    color: COLORS.white,
+    fontSize: 9,
+    fontWeight: '800',
   },
-  emptyText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.muted,
-    marginTop: SPACING.sm,
-  },
-  // FAB
-  fabContainer: {
-    position: 'absolute',
-    bottom: 90,
-    right: 20,
-    zIndex: 100,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  // Self-task modal
+  // Modal Style Rebalance
   selfTaskModal: {
     flex: 1,
-    backgroundColor: COLORS.backgroundPrimary,
   },
   selfTaskHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.xl,
-    backgroundColor: COLORS.surfaceAlt,
+    padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: COLORS.glassBorder,
   },
   selfTaskTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.textDark,
+    ...TYPOGRAPHY.header,
+    color: COLORS.white,
   },
   selfTaskCloseBtn: {
-    padding: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    padding: 8,
+    backgroundColor: COLORS.glassBackgroundLv1,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
   },
   selfTaskContent: {
-    padding: SPACING.xl,
+    padding: SPACING.lg,
   },
   selfTaskLabel: {
     fontSize: 13,
     fontWeight: '800',
-    color: COLORS.mutedText,
+    color: 'rgba(255,255,255,0.6)',
     textTransform: 'uppercase',
     marginBottom: SPACING.sm,
     marginTop: SPACING.md,
   },
   selfTaskInput: {
-    backgroundColor: COLORS.surfaceAlt,
-    color: COLORS.textDark,
+    backgroundColor: COLORS.glassBackgroundLv3,
+    color: COLORS.white,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
     fontSize: 16,
     marginBottom: SPACING.sm,
   },
-  selfTaskInfo: {
+  photoUploadBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(159, 122, 234, 0.1)',
-    padding: SPACING.md,
+    justifyContent: 'center',
+    height: 50,
+    backgroundColor: COLORS.glassBackgroundLv2,
     borderRadius: RADIUS.md,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.xl,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
   },
-  selfTaskInfoText: {
-    color: COLORS.link,
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
+  photoUploadText: {
+    color: COLORS.white,
+    marginLeft: 8,
+    fontWeight: 'bold',
+  },
+  photoRemoveBtn: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
   },
   selfTaskSubmitBtn: {
     backgroundColor: COLORS.success,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    borderRadius: RADIUS.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    marginTop: SPACING.xl,
   },
   selfTaskSubmitText: {
     color: COLORS.white,
     fontWeight: '800',
     fontSize: 16,
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
