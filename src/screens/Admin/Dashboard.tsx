@@ -5,6 +5,7 @@ import { COLORS, SPACING, RADIUS, SHADOWS, TYPOGRAPHY } from '../../theme';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
+import { AppAvatar } from '../../components/Avatar';
 import Button from '../../components/Button';
 import ImageModal from '../../components/ImageModal';
 import FadeInView from '../../components/FadeInView';
@@ -19,6 +20,7 @@ import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AdminDashboardSkeleton } from '../../components/SkeletonComponents';
 
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
@@ -127,9 +129,10 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
-        <Text style={{ marginTop: 12, color: COLORS.mutedText, fontWeight: '700' }}>Loading Dashboard...</Text>
+      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+          <AdminDashboardSkeleton />
+        </SafeAreaView>
       </LinearGradient>
     );
   }
@@ -269,7 +272,10 @@ export default function DashboardScreen() {
                {leaderboard.slice(0, 3).map((student, index) => (
                  <FadeInView key={student.uid || index.toString()} delay={index * 150}>
                    <View style={[styles.leaderboardRow, index !== Math.min(2, leaderboard.length -1) && {borderBottomWidth: 1, borderBottomColor: COLORS.glassBorder}]}>
-                     <Text style={styles.rankIcon}>{index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</Text>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Text style={styles.rankIcon}>{index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</Text>
+                        <AppAvatar user={student} size={36} />
+                     </View>
                      <View style={styles.leadInfo}>
                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                          <Text style={styles.leadName}>{student.name}</Text>
@@ -324,9 +330,7 @@ export default function DashboardScreen() {
                  {/* Student Info Card */}
                  <Text style={styles.sectionTitle}>Submitted By</Text>
                  <View style={styles.verifyStudentCard}>
-                   <View style={styles.avatarPlaceholder}>
-                     <MaterialCommunityIcons name="account" size={24} color={COLORS.white} />
-                   </View>
+                   <AppAvatar user={studentInfo} size={50} />
                    <View style={{flex: 1}}>
                      <Text style={styles.subStudentName}>{studentInfo?.name || selectedSubmission.studentId}</Text>
                      <Text style={styles.subTaskTitle}>{studentInfo?.teamName ? `Team ${studentInfo.teamName}` : 'No Team'}</Text>

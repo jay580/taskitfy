@@ -30,6 +30,7 @@ import Logo from '../../components/Logo';
 import FadeInView from '../../components/FadeInView';
 import TaskCard from '../../components/TaskCard';
 import SectionContainer from '../../components/SectionContainer';
+import { HomeSkeleton } from '../../components/SkeletonComponents';
 import { useToast } from '../../contexts/ToastContext';
 import { getTaskStatus, getTaskStatusLabel } from '../../utils/taskStatus';
 
@@ -141,8 +142,10 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.secondary} />
+      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+          <HomeSkeleton />
+        </SafeAreaView>
       </LinearGradient>
     );
   }

@@ -1,14 +1,16 @@
 import { doc, setDoc, query, collection, where, orderBy, onSnapshot, updateDoc, increment, deleteField, getDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db, secondaryAuth } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, deleteUser } from 'firebase/auth';
-import { addMemberToTeam, removeMemberFromTeam, findOrCreateTeam } from './teams';
+import { addMemberToTeam, removeMemberFromTeam } from './teams';
+
+import { TeamId } from '../types';
 
 export interface UserSchema {
   id: string;
   uid: string;
   name: string;
   studentId: string;
-  teamId: string;
+  teamId: TeamId | '';
   teamName: string;
   dateOfBirth: string;
   email: string;
@@ -65,7 +67,7 @@ const generateStudentId = (name: string, dob: string) => {
   return `${firstPart}${lastPart}${d}${m}${rand}`.replace(/[^a-z0-9]/g, '');
 };
 
-export const createStudent = async (name: string, teamName: string, dateOfBirth: string) => {
+export const createStudent = async (name: string, teamId: TeamId, dateOfBirth: string) => {
   try {
     const studentId = generateStudentId(name, dateOfBirth);
     const email = `${studentId.toLowerCase()}@tq.app`;
@@ -81,8 +83,7 @@ export const createStudent = async (name: string, teamName: string, dateOfBirth:
       throw new Error(`A student with ID ${studentId} or email ${email} already exists.`);
     }
 
-    // Find or create the team
-    const teamId = teamName ? await findOrCreateTeam(teamName) : '';
+
 
     const userCred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     const uid = userCred.user.uid;
@@ -93,12 +94,13 @@ export const createStudent = async (name: string, teamName: string, dateOfBirth:
       name,
       studentId,
       teamId,
-      teamName: teamName || '',
+      teamName: '', // Legacy field
       dateOfBirth: dateOfBirth || '',
       email,
       role: 'student',
       pointsThisMonth: 0,
       totalTasksDone: 0,
+      rewardsWon: 0,
       streakDays: 0,
       rewardClaimed: false,
       badges: [],

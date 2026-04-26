@@ -9,12 +9,13 @@ import {
   Alert,
   Animated,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { pickImage as pickImageUtil } from '../../utils/imagePicker';
+import { uploadToCloudinary } from '../../services/uploadImage';
 import { updateDoc, doc } from 'firebase/firestore';
 import { verifyBeforeUpdateEmail } from 'firebase/auth';
 
@@ -55,32 +56,22 @@ export default function ProfileScreen() {
   const handleAvatarPressIn = () => { Animated.spring(avatarScale, { toValue: 0.95, useNativeDriver: true }).start(); };
   const handleAvatarPressOut = () => { Animated.spring(avatarScale, { toValue: 1, useNativeDriver: true }).start(); };
 
-  const uploadImage = async (uri: string) => {
-    if (!user?.uid) return;
+  const handleChangePhoto = async () => {
+    if (uploading) return; // Prevent double tap
+    const uri = await pickImageUtil();
+    if (!uri) return;
+
     try {
       setUploading(true);
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const storage = getStorage();
-      const imageRef = ref(storage, `profiles/${user.uid}_${Date.now()}.jpg`);
-      await uploadBytes(imageRef, blob, { contentType: 'image/jpeg' });
-      const downloadURL = await getDownloadURL(imageRef);
-      await updateDoc(doc(db, 'users', user.uid), { profileImage: downloadURL || null });
+      const imageUrl = await uploadToCloudinary(uri);
+      const uid = user?.uid || userProfile?.uid;
+      if (!uid) throw new Error('No authenticated user.');
+      await updateDoc(doc(db, 'users', uid), { profileImage: imageUrl });
       showToast("✅ Profile image updated!", "success");
     } catch (e: any) {
-      showToast("❌ Upload failed", "error");
+      showToast(`❌ ${e.message || 'Upload failed'}`, "error");
     } finally {
       setUploading(false);
-    }
-  };
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.5,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      uploadImage(result.assets[0].uri);
     }
   };
 
@@ -219,7 +210,7 @@ export default function ProfileScreen() {
             <LinearGradient colors={[COLORS.gradientCardTop, COLORS.gradientCardBottom]} style={styles.topLight} />
             <View style={styles.heroProfileInner}>
               <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: avatarScale }] }]}>
-                <TouchableOpacity onPress={pickImage} onPressIn={handleAvatarPressIn} onPressOut={handleAvatarPressOut} activeOpacity={0.9}>
+                <TouchableOpacity onPress={handleChangePhoto} onPressIn={handleAvatarPressIn} onPressOut={handleAvatarPressOut} activeOpacity={0.9} disabled={uploading}>
                   <AppAvatar user={displayUser} size={84} />
                   <View style={styles.cameraIcon}>
                     <MaterialCommunityIcons name="camera" size={14} color={COLORS.white} />
@@ -229,10 +220,10 @@ export default function ProfileScreen() {
 
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroName}>{displayUser?.name || 'Student'}</Text>
-                {displayUser?.teamName ? (
+                {displayUser?.teamId ? (
                   <View style={styles.heroTeamBadge}>
                     <MaterialCommunityIcons name="shield-star" size={14} color={COLORS.accent} />
-                    <Text style={styles.heroTeamText}>Team {displayUser.teamName}</Text>
+                    <Text style={styles.heroTeamText}>Team {displayUser.teamId.charAt(0).toUpperCase() + displayUser.teamId.slice(1)}</Text>
                   </View>
                 ) : (
                   <Text style={styles.heroSubtitle}>{displayUser?.email}</Text>
@@ -260,13 +251,18 @@ export default function ProfileScreen() {
           </LinearGradient>
         </FadeInView>
 
-        {uploading && <Text style={{ color: COLORS.accent, textAlign: 'center', marginBottom: SPACING.lg }}>Uploading image...</Text>}
+        {uploading && (
+          <View style={styles.uploadingBanner}>
+            <ActivityIndicator size="small" color={COLORS.accent} />
+            <Text style={{ color: COLORS.accent, marginLeft: SPACING.sm, fontWeight: '700' }}>Uploading image...</Text>
+          </View>
+        )}
 
         {/* Section: ACCOUNT */}
         <FadeInView delay={50}>
           <Text style={styles.sectionHeader}>ACCOUNT</Text>
           <Card style={styles.glassGroupCard}>
-            {renderActionRow('account-edit', COLORS.link, 'Edit Profile Photo', 'Update your avatar', pickImage)}
+            {renderActionRow('account-edit', COLORS.link, 'Edit Profile Photo', 'Update your avatar', handleChangePhoto)}
             {renderActionRow('lock-reset', COLORS.warning, 'Change Password', 'Update your security key', () => setEditModalVisible(true))}
             {renderActionRow('email', COLORS.mutedText, 'Email Address', displayUser?.email || 'N/A', () => {
               setNewEmail(displayUser?.email || '');
@@ -454,4 +450,15 @@ const styles = StyleSheet.create({
   modalInput: { backgroundColor: COLORS.glassBackgroundLv3, color: COLORS.white, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.glassBorder, fontSize: 16, marginBottom: SPACING.sm },
   saveBtn: { backgroundColor: COLORS.link, paddingVertical: SPACING.lg, borderRadius: RADIUS.lg, alignItems: 'center', marginTop: SPACING.xl },
   saveBtnText: { ...TYPOGRAPHY.body, fontWeight: '800', color: COLORS.white },
+
+  // Upload banner
+  uploadingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.lg,
+    backgroundColor: 'rgba(236, 201, 75, 0.1)',
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+  },
 });

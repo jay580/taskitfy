@@ -7,20 +7,35 @@ import { ToastProvider } from './src/contexts/ToastContext';
 import { AuthProvider } from './src/contexts/AuthContext';
 import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 
+import * as SplashScreen from 'expo-splash-screen';
+import { View } from 'react-native';
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
   const [isAppReady, setIsAppReady] = useState(false);
 
   return (
-    <AuthProvider>
-      <PaperProvider>
-        <ToastProvider>
-          <NavigationContainer>
-            <RootNavigator />
-            <StatusBar style="light" />
-          </NavigationContainer>
-          {!isAppReady && <AnimatedSplashScreen onAnimationComplete={() => setIsAppReady(true)} />}
-        </ToastProvider>
-      </PaperProvider>
-    </AuthProvider>
+    <View style={{ flex: 1, backgroundColor: '#0B0F1A' }}>
+      <AuthProvider>
+        <PaperProvider>
+          <ToastProvider>
+            <NavigationContainer>
+              <RootNavigator />
+              <StatusBar style="light" />
+            </NavigationContainer>
+            {!isAppReady && (
+              <AnimatedSplashScreen 
+                onAnimationComplete={async () => {
+                  setIsAppReady(true);
+                  await SplashScreen.hideAsync();
+                }} 
+              />
+            )}
+          </ToastProvider>
+        </PaperProvider>
+      </AuthProvider>
+    </View>
   );
 }

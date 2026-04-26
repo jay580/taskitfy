@@ -4,9 +4,10 @@ import { Animated, Easing } from 'react-native';
 interface FadeInViewProps {
   children: React.ReactNode;
   delay?: number;
+  style?: any;
 }
 
-export default function FadeInView({ children, delay = 0 }: FadeInViewProps) {
+export default function FadeInView({ children, delay = 0, style }: FadeInViewProps) {
   const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -30,7 +31,7 @@ export default function FadeInView({ children, delay = 0 }: FadeInViewProps) {
   }, []);
 
   return (
-    <Animated.View style={{ transform: [{ translateY: slideAnim }], opacity: opacityAnim }}>
+    <Animated.View style={[{ transform: [{ translateY: slideAnim }], opacity: opacityAnim }, style]}>
       {children}
     </Animated.View>
   );

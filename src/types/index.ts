@@ -1,17 +1,20 @@
+// ── Team ──
+export type TeamId = 'earth' | 'water' | 'fire' | 'wind';
+
 // ── User ──
 export interface UserProfile {
   uid: string;
   name: string;
   studentId?: string;        // e.g., "STU001"
-  teamId: string;
-  teamName: string;
+  teamId: TeamId | '';       // new standard
+  teamName: string;          // kept temporarily for verification
   dateOfBirth: string;       // "YYYY-MM-DD"
   email: string;
   profileImage: string | null;
   role: 'student' | 'admin';
   pointsThisMonth: number;
   totalTasksDone: number;
-  rewardsWon: number;
+  rewardsWon?: number;
   rewardClaimed?: boolean;
   streakDays: number;
   badges: string[];
@@ -21,9 +24,8 @@ export interface UserProfile {
   needsProfileUpdate?: boolean;
 }
 
-// ── Team ──
 export interface Team {
-  id: string;
+  id: TeamId;
   name: string;
   totalPoints: number;
   members: string[];          // Array of user UIDs
@@ -61,6 +63,7 @@ export interface Submission {
   type: SubmissionType;        // "task" or "self"
   title: string;
   description: string;
+  category?: string;
   photoUrl: string;
   photoUrls?: string[];
   notes: string;
@@ -112,6 +115,8 @@ export interface LeaderboardEntry {
   uid: string;
   name: string;
   initials: string;
+  profileImage?: string | null;
+  teamId: TeamId | '';
   teamName: string;
   totalTasksDone: number;
   points: number;              // pointsThisMonth

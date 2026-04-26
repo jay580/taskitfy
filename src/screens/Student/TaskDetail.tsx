@@ -12,16 +12,20 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { submitTask } from '../../services/firestore';
+import { uploadMultipleToCloudinary } from '../../services/uploadImage';
+import { pickImage, takePhoto } from '../../utils/imagePicker';
 import type { Task, TaskCategory } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
 import { getTaskStatusLabel } from '../../utils/taskStatus';
 import Card from '../../components/Card';
 import { Platform } from 'react-native';
+
+const MAX_IMAGES = 5;
+
 const CATEGORY_COLORS: Record<TaskCategory, string> = {
   Academic: COLORS.link,
   Domestic: COLORS.success,
@@ -49,6 +53,8 @@ export default function TaskDetail({ route, navigation }: Props) {
   const [images, setImages] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -56,63 +62,79 @@ export default function TaskDetail({ route, navigation }: Props) {
   const categoryIcon = CATEGORY_ICONS[task.category] || 'flag';
   const timeStatus = getTaskStatusLabel(task);
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow access to your photo library.');
+  // ─── Image Handlers ───
+
+  const handlePickImage = async () => {
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert('Limit Reached', `Maximum ${MAX_IMAGES} images allowed.`);
       return;
     }
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets?.length) {
-        setImages((prev) => Array.from(new Set([...prev, ...result.assets.map(a => a.uri).filter(Boolean)])));
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick image.');
-    }
+    const uri = await pickImage();
+    if (uri) setImages(prev => [...prev, uri]);
   };
 
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow access to your camera.');
+  const handleTakePhoto = async () => {
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert('Limit Reached', `Maximum ${MAX_IMAGES} images allowed.`);
       return;
     }
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets[0]) {
-        setImages((prev) => Array.from(new Set([...prev, result.assets[0].uri])));
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo.');
-    }
+    const uri = await takePhoto();
+    if (uri) setImages(prev => [...prev, uri]);
   };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // ─── Submit Handler ───
 
   const handleSubmit = async () => {
     if (!userProfile) return;
+
+    // 1. Validate at least 1 image
     if (!images.length) {
       Alert.alert('Photo Required', 'Please upload at least one photo as proof of task completion.');
       return;
     }
-    setSubmitting(true);
+
+    // 2. Lock submit — prevent double submission
+    if (uploading || submitting) return;
+    setUploading(true);
+    setUploadFailed(false);
+
     try {
-      await submitTask(task.id, userProfile.uid, task, images, notes.trim() || undefined);
+      // 3. Upload ALL images to Cloudinary
+      const imageUrls = await uploadMultipleToCloudinary(images);
+
+      // 4. Switch to Firestore write phase
+      setUploading(false);
+      setSubmitting(true);
+
+      // 5. Save submission in Firestore with photoUrls + photoUrl (backward compat)
+      await submitTask(task.id, userProfile.uid, task, imageUrls, notes.trim() || undefined);
+
+      // 6. Success
       Alert.alert('Submitted!', 'Your task has been submitted for approval.', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to submit task. Please try again.');
+    } catch (error: any) {
+      // Show specific error — no silent failures
+      const message = error.message || 'Something went wrong. Please try again.';
+      Alert.alert('Submission Failed', message);
+      setUploadFailed(true);
     } finally {
+      setUploading(false);
       setSubmitting(false);
     }
+  };
+
+  const isLocked = uploading || submitting;
+
+  const getButtonLabel = () => {
+    if (uploading) return `Uploading ${images.length} photo${images.length > 1 ? 's' : ''}...`;
+    if (submitting) return 'Submitting...';
+    if (uploadFailed) return 'Retry Upload';
+    return 'Submit for Review';
   };
 
   return (
@@ -159,31 +181,56 @@ export default function TaskDetail({ route, navigation }: Props) {
           </Card>
 
           <Card style={styles.glassCard}>
-            <Text style={styles.descriptionLabel}>Proof of Work *</Text>
-            
-            {images.length > 0 ? (
+            <View style={styles.proofHeader}>
+              <Text style={styles.descriptionLabel}>Proof of Work *</Text>
+              <Text style={styles.imageCount}>{images.length}/{MAX_IMAGES}</Text>
+            </View>
+
+            {/* ─── Image Previews (Horizontal Scroll) ─── */}
+            {images.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoList}>
                 {images.map((uri, index) => (
                   <View key={`${uri}-${index}`} style={styles.previewContainer}>
                     <Image source={{ uri }} style={styles.previewImage} />
-                    <TouchableOpacity style={styles.removeButton} onPress={() => setImages((prev) => prev.filter((_, i) => i !== index))}>
+                    <TouchableOpacity style={styles.removeButton} onPress={() => removeImage(index)}>
                       <Ionicons name="close-circle" size={24} color={COLORS.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
-                <TouchableOpacity style={styles.addMoreBtn} onPress={pickImage}>
-                  <MaterialCommunityIcons name="plus" size={30} color={COLORS.white} />
-                </TouchableOpacity>
+                {/* Add more button inline */}
+                {images.length < MAX_IMAGES && (
+                  <TouchableOpacity style={styles.addMoreBtn} onPress={handlePickImage}>
+                    <MaterialCommunityIcons name="plus" size={30} color={COLORS.white} />
+                    <Text style={styles.addMoreText}>Add</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
-            ) : (
+            )}
+
+            {/* ─── Camera / Gallery Buttons (when no images yet) ─── */}
+            {images.length === 0 && (
               <View style={styles.uploadButtons}>
-                <TouchableOpacity style={styles.uploadButton} onPress={takePhoto}>
+                <TouchableOpacity style={styles.uploadButton} onPress={handleTakePhoto}>
                   <MaterialCommunityIcons name="camera-outline" size={30} color={categoryColor} />
                   <Text style={styles.uploadText}>Camera</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
+                <TouchableOpacity style={styles.uploadButton} onPress={handlePickImage}>
                   <MaterialCommunityIcons name="image-outline" size={30} color={categoryColor} />
                   <Text style={styles.uploadText}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Camera/Gallery row when images exist but under limit */}
+            {images.length > 0 && images.length < MAX_IMAGES && (
+              <View style={styles.addActionRow}>
+                <TouchableOpacity style={styles.addActionBtn} onPress={handleTakePhoto}>
+                  <MaterialCommunityIcons name="camera-outline" size={18} color={COLORS.white} />
+                  <Text style={styles.addActionText}>Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.addActionBtn} onPress={handlePickImage}>
+                  <MaterialCommunityIcons name="image-outline" size={18} color={COLORS.white} />
+                  <Text style={styles.addActionText}>Gallery</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -205,7 +252,7 @@ export default function TaskDetail({ route, navigation }: Props) {
         </ScrollView>
       </View>
 
-      {/* Floating CTA fixed at bottom, above Navbar (Navbar uses ~100px at bottom) */}
+      {/* Floating CTA fixed at bottom, above Navbar */}
       <View style={[styles.fixedBottom, { paddingBottom: Platform.OS === 'ios' ? 110 : 90 }]}>
         <LinearGradient
           colors={[COLORS.glassBackgroundLv1, COLORS.gradientBgEnd]}
@@ -213,19 +260,30 @@ export default function TaskDetail({ route, navigation }: Props) {
         />
         <Animated.View style={{ transform: [{ scale: scaleAnim }], width: '100%', paddingHorizontal: SPACING.lg, zIndex: 10 }}>
           <TouchableOpacity
-            style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+            style={[
+              styles.submitButton,
+              isLocked && styles.submitButtonDisabled,
+              uploadFailed && !isLocked && styles.submitButtonRetry,
+            ]}
             activeOpacity={0.9}
             onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start()}
             onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start()}
             onPress={handleSubmit}
-            disabled={submitting}
+            disabled={isLocked}
           >
-            {submitting ? (
-              <ActivityIndicator color={COLORS.white} />
+            {isLocked ? (
+              <View style={styles.uploadingRow}>
+                <ActivityIndicator color={COLORS.white} />
+                <Text style={styles.submitButtonText}>{getButtonLabel()}</Text>
+              </View>
             ) : (
               <>
-                <MaterialCommunityIcons name="upload" size={22} color={COLORS.white} />
-                <Text style={styles.submitButtonText}>Submit for Review</Text>
+                <MaterialCommunityIcons
+                  name={uploadFailed ? 'refresh' : 'upload'}
+                  size={22}
+                  color={COLORS.white}
+                />
+                <Text style={styles.submitButtonText}>{getButtonLabel()}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -298,6 +356,21 @@ const styles = StyleSheet.create({
   description: {
     ...TYPOGRAPHY.body, color: COLORS.textSecondary, lineHeight: 24,
   },
+
+  // ─── Proof of Work Header ───
+  proofHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  imageCount: {
+    ...TYPOGRAPHY.small,
+    fontWeight: '700',
+    color: COLORS.mutedText,
+  },
+
+  // ─── Upload Buttons (no images) ───
   uploadButtons: {
     flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm,
   },
@@ -307,11 +380,53 @@ const styles = StyleSheet.create({
   uploadText: {
     ...TYPOGRAPHY.small, fontWeight: '600', color: COLORS.white, marginTop: 8,
   },
+
+  // ─── Multi-Image Preview ───
   photoList: { marginVertical: SPACING.sm },
-  previewContainer: { position: 'relative', marginRight: SPACING.md },
-  previewImage: { width: 100, height: 100, borderRadius: RADIUS.md },
-  removeButton: { position: 'absolute', top: 4, right: 4, backgroundColor: COLORS.surface, borderRadius: 12 },
-  addMoreBtn: { width: 100, height: 100, borderRadius: RADIUS.md, backgroundColor: COLORS.glassBackgroundLv3, borderWidth: 1, borderColor: COLORS.glassBorder, alignItems: 'center', justifyContent: 'center' },
+  previewContainer: {
+    position: 'relative', marginRight: SPACING.md,
+  },
+  previewImage: {
+    width: 110, height: 110, borderRadius: RADIUS.md, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: COLORS.glassBorder,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+  },
+  addMoreBtn: {
+    width: 110, height: 110, borderRadius: RADIUS.md, backgroundColor: COLORS.glassBackgroundLv3, borderWidth: 1, borderColor: COLORS.glassBorder, alignItems: 'center', justifyContent: 'center',
+  },
+  addMoreText: {
+    ...TYPOGRAPHY.small, fontWeight: '600', color: COLORS.mutedText, marginTop: 4,
+  },
+
+  // ─── Add Action Row (when images exist) ───
+  addActionRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  addActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.glassBackgroundLv3,
+    borderRadius: RADIUS.md,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  addActionText: {
+    ...TYPOGRAPHY.small,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+
   notesInput: {
     backgroundColor: COLORS.glassBackgroundLv3, borderRadius: RADIUS.md, padding: SPACING.md, color: COLORS.white, ...TYPOGRAPHY.body, minHeight: 80, borderWidth: 1, borderColor: COLORS.glassBorder,
   },
@@ -322,5 +437,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.secondary, paddingVertical: 18, borderRadius: RADIUS.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', shadowColor: COLORS.secondary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10,
   },
   submitButtonDisabled: { opacity: 0.6 },
+  submitButtonRetry: {
+    backgroundColor: COLORS.warning,
+    shadowColor: COLORS.warning,
+  },
   submitButtonText: { ...TYPOGRAPHY.body, fontWeight: '800', color: COLORS.white, fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
+  uploadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
 });

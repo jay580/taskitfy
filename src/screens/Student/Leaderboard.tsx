@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Animated,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import type { LeaderboardEntry, AppSettings } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../theme';
 import FadeInView from '../../components/FadeInView';
 import Card from '../../components/Card';
+import { LeaderboardScreenSkeleton } from '../../components/SkeletonComponents';
 import { useToast } from '../../contexts/ToastContext';
 
 const TABS = ['Student Rank', 'Team Rank'];
@@ -30,6 +32,52 @@ const PODIUM_STYLES = [
   { glow: COLORS.link, baseHighlight: 'rgba(159, 122, 234, 0.2)', medal: 'shield-half-full' },   // 2nd
   { glow: COLORS.warning, baseHighlight: 'rgba(237, 137, 54, 0.2)', medal: 'shield-outline' },   // 3rd
 ];
+
+// ─── Reusable avatar with profile image + initials fallback ───
+function LeaderboardAvatar({ profileImage, initials, size, borderColor }: {
+  profileImage?: string | null;
+  initials: string;
+  size: number;
+  borderColor: string;
+}) {
+  const [imgError, setImgError] = React.useState(false);
+
+  if (profileImage && !imgError) {
+    return (
+      <Image
+        source={{ uri: profileImage }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: size > 54 ? 3 : 2,
+          borderColor,
+        }}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.podiumAvatar,
+        size > 54 && styles.podiumAvatarCenter,
+        { borderColor, width: size, height: size, borderRadius: size / 2 },
+      ]}
+    >
+      <Text
+        style={[
+          styles.podiumAvatarText,
+          size > 54 && styles.podiumAvatarTextCenter,
+          { color: COLORS.white },
+        ]}
+      >
+        {initials}
+      </Text>
+    </View>
+  );
+}
 
 function TeamPodium({ teams }: { teams: TeamSchema[] }) {
   const topTeams = teams.slice(0, 3);
@@ -140,11 +188,12 @@ export default function LeaderboardScreen() {
     return (
       <View key={item.uid} style={[styles.podiumItem, isCenter ? styles.podiumCenter : null]}>
         <View style={[styles.avatarGlow, { shadowColor: style.glow, elevation: isCenter ? 12 : 6 }]}>
-          <View style={[styles.podiumAvatar, isCenter && styles.podiumAvatarCenter, { borderColor: style.glow }]}>
-            <Text style={[styles.podiumAvatarText, isCenter && styles.podiumAvatarTextCenter, { color: COLORS.white }]}>
-              {item.initials}
-            </Text>
-          </View>
+          <LeaderboardAvatar
+            profileImage={item.profileImage}
+            initials={item.initials}
+            size={isCenter ? 68 : 54}
+            borderColor={style.glow}
+          />
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -182,9 +231,16 @@ export default function LeaderboardScreen() {
           
           <Text style={[styles.listRank, isTop3 && { color: style.glow }]}>#{item.rank}</Text>
 
-          <View style={[styles.listAvatar, isTop3 && { borderColor: style.glow }]}>
-            <Text style={styles.listAvatarText}>{item.initials}</Text>
-          </View>
+          {item.profileImage ? (
+            <Image
+              source={{ uri: item.profileImage }}
+              style={[styles.listAvatar, isTop3 && { borderColor: style.glow }]}
+            />
+          ) : (
+            <View style={[styles.listAvatar, isTop3 && { borderColor: style.glow }]}>
+              <Text style={styles.listAvatarText}>{item.initials}</Text>
+            </View>
+          )}
 
           <View style={styles.listInfo}>
             <View style={styles.listNameRow}>
@@ -199,7 +255,7 @@ export default function LeaderboardScreen() {
               )}
             </View>
             <Text style={styles.listSubtext}>
-              {item.teamName ? `${item.teamName} • ` : ''}{item.totalTasksDone} tasks
+              {item.teamId ? `${item.teamId.charAt(0).toUpperCase() + item.teamId.slice(1)} • ` : ''}{item.totalTasksDone} tasks
             </Text>
           </View>
 
@@ -240,8 +296,10 @@ export default function LeaderboardScreen() {
 
   if (loading) {
     return (
-      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.secondary} />
+      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+          <LeaderboardScreenSkeleton />
+        </SafeAreaView>
       </LinearGradient>
     );
   }
@@ -289,8 +347,8 @@ export default function LeaderboardScreen() {
 
         <View style={styles.listContainer}>
           <FlatList
-            data={activeTab === 'Student Rank' ? entries : teams}
-            keyExtractor={(item, index) => ('uid' in item ? item.uid : item.id) || index.toString()}
+            data={activeTab === 'Student Rank' ? entries : teams as any}
+            keyExtractor={(item: any, index) => ('uid' in item ? item.uid : item.id) || index.toString()}
             renderItem={activeTab === 'Student Rank' ? renderListItem as any : renderTeamItem as any}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.flatListContent}

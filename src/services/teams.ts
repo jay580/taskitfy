@@ -1,31 +1,16 @@
 import { collection, doc, addDoc, onSnapshot, updateDoc, query, orderBy, increment, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 
+import { TeamId } from '../types';
+
 export interface TeamSchema {
-  id: string;
+  id: TeamId;
   name: string;
   totalPoints: number;
   members: string[];
 }
 
-/**
- * Create a new team in the "teams" collection.
- */
-export const createTeam = async (name: string): Promise<string> => {
-  try {
-    const docRef = await addDoc(collection(db, 'teams'), {
-      name,
-      totalPoints: 0,
-      members: [],
-    });
-    // Update the doc to store its own ID
-    await updateDoc(docRef, { id: docRef.id });
-    return docRef.id;
-  } catch (error) {
-    console.error("Error creating team:", error);
-    throw error;
-  }
-};
+
 
 /**
  * Observe all teams in real-time, sorted by name.
@@ -38,7 +23,7 @@ export const observeTeams = (callback: (teams: TeamSchema[]) => void) => {
     snapshot.forEach((doc) => {
       const data = doc.data();
       teams.push({
-        id: doc.id,
+        id: doc.id as TeamId,
         name: data.name || '',
         totalPoints: data.totalPoints || 0,
         members: data.members || [],
@@ -61,7 +46,7 @@ export const observeTeamLeaderboard = (callback: (teams: TeamSchema[]) => void) 
     snapshot.forEach((doc) => {
       const data = doc.data();
       teams.push({
-        id: doc.id,
+        id: doc.id as TeamId,
         name: data.name || '',
         totalPoints: data.totalPoints || 0,
         members: data.members || [],
@@ -135,26 +120,4 @@ export const giftPointsToTeam = async (teamId: string, points: number) => {
   }
 };
 
-/**
- * Find or create a team by name. Returns the team ID.
- */
-export const findOrCreateTeam = async (teamName: string): Promise<string> => {
-  try {
-    // Try to find existing team
-    const q = query(collection(db, 'teams'));
-    const { getDocs } = await import('firebase/firestore');
-    const snapshot = await getDocs(q);
-    
-    for (const docSnap of snapshot.docs) {
-      if (docSnap.data().name?.toLowerCase() === teamName.toLowerCase()) {
-        return docSnap.id;
-      }
-    }
-    
-    // Create new team
-    return await createTeam(teamName);
-  } catch (error) {
-    console.error("Error finding/creating team:", error);
-    throw error;
-  }
-};
+

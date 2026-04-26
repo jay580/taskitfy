@@ -39,7 +39,7 @@ export default function ManageScreen() {
   // === Students State ===
   const [students, setStudents] = useState<UserSchema[]>([]);
   const [studentName, setStudentName] = useState('');
-  const [studentTeam, setStudentTeam] = useState('');
+  const [studentTeam, setStudentTeam] = useState<any>('earth');
   const [studentDOB, setStudentDOB] = useState('');
 
   // === Teams State ===
@@ -116,7 +116,7 @@ export default function ManageScreen() {
       setCredModalVisible(true);
       showToast("🎉 Student added successfully", "success");
       setStudentName('');
-      setStudentTeam('');
+      setStudentTeam('earth');
       setStudentDOB('');
     } catch (e: any) {
       showToast(`❌ ${e.message}`, "error");
@@ -319,7 +319,21 @@ export default function ManageScreen() {
       <View style={styles.glassFormCard}>
         <Text style={styles.sectionTitle}>Add New Student</Text>
         <TextInput style={styles.glassInput} placeholderTextColor={COLORS.muted} placeholder="Full Name" value={studentName} onChangeText={setStudentName} />
-        <TextInput style={styles.glassInput} placeholderTextColor={COLORS.muted} placeholder="Team Name (e.g., Alpha)" value={studentTeam} onChangeText={setStudentTeam} />
+        
+        <View style={[styles.glassInput, { padding: 0, justifyContent: 'center' }]}>
+          <Picker
+            selectedValue={studentTeam}
+            onValueChange={(itemValue) => setStudentTeam(itemValue)}
+            style={{ color: COLORS.textDark }}
+            dropdownIconColor={COLORS.textDark}
+          >
+            <Picker.Item label="Earth" value="earth" />
+            <Picker.Item label="Water" value="water" />
+            <Picker.Item label="Fire" value="fire" />
+            <Picker.Item label="Wind" value="wind" />
+          </Picker>
+        </View>
+
         <TextInput style={styles.glassInput} placeholderTextColor={COLORS.muted} placeholder="Date of Birth (YYYY-MM-DD) (Optional)" value={studentDOB} onChangeText={setStudentDOB} />
         <Text style={styles.helperText}>* Login credentials will be auto-generated and shown in a modal.</Text>
         <Button loading={loadingStudent} disabled={loadingStudent} title={loadingStudent ? "Registering..." : "Register Student"} onPress={handleCreateStudent} style={{ marginTop: SPACING.sm }} />
@@ -343,7 +357,7 @@ export default function ManageScreen() {
                     <Text style={styles.itemTitle}>{s.name}</Text>
                     {s.isSuspended && <Badge label="SUSPENDED" backgroundColor={COLORS.error} textColor={COLORS.white} />}
                   </View>
-                  <Text style={{ color: COLORS.mutedText, marginTop: 4 }}>{s.studentId} • {s.teamName ? `Team ${s.teamName}` : 'No Team'}</Text>
+                  <Text style={{ color: COLORS.mutedText, marginTop: 4 }}>{s.studentId} • {s.teamId ? `Team ${s.teamId.charAt(0).toUpperCase() + s.teamId.slice(1)}` : 'No Team'}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.accent }}>{s.pointsThisMonth} pts</Text>
@@ -526,7 +540,7 @@ export default function ManageScreen() {
                 </View>
                 <View style={styles.detailItem}>
                   <Text style={styles.credLabel}>Team</Text>
-                  <Text style={styles.credValue}>{selectedStudent.teamName || 'None'}</Text>
+                  <Text style={styles.credValue}>{selectedStudent.teamId ? selectedStudent.teamId.charAt(0).toUpperCase() + selectedStudent.teamId.slice(1) : 'None'}</Text>
                 </View>
                 <View style={styles.detailItem}>
                   <Text style={styles.credLabel}>Date of Birth</Text>

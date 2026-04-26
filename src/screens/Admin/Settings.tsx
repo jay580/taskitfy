@@ -15,8 +15,8 @@ import { db } from '../../services/firebase';
 import { logout } from '../../services/auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useToast } from '../../contexts/ToastContext';
-import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { pickImage as pickImageUtil } from '../../utils/imagePicker';
+import { uploadToCloudinary } from '../../services/uploadImage';
 import { updateDoc } from 'firebase/firestore';
 import { useUser } from '../../hooks/useUser';
 import { AppAvatar } from '../../components/Avatar';
@@ -199,45 +199,22 @@ const handleResetMonth = () => {
     ])
   };
 
-  const uploadImage = async (uri: string) => {
-    if (!user?.uid) return;
+  const handleChangePhoto = async () => {
+    if (uploading) return; // Prevent double tap
+    const uri = await pickImageUtil();
+    if (!uri) return;
+
     try {
       setUploading(true);
-
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const storage = getStorage();
-      const imageRef = ref(storage, `profiles/${user.uid}_${Date.now()}.jpg`);
-
-      await uploadBytes(imageRef, blob, {
-        contentType: 'image/jpeg',
-      });
-      const downloadURL = await getDownloadURL(imageRef);
-
-      await updateDoc(doc(db, "users", user.uid), {
-        profileImage: downloadURL || null,
-      });
-
-      showToast(" Profile updated!", "success");
+      const imageUrl = await uploadToCloudinary(uri);
+      if (!user?.uid) throw new Error('No authenticated user.');
+      await updateDoc(doc(db, 'users', user.uid), { profileImage: imageUrl });
+      showToast("✅ Profile updated!", "success");
     } catch (e: any) {
-      console.log("UPLOAD ERROR:", e);
-      showToast(" Upload failed", "error");
+      console.error('Profile upload error:', e);
+      showToast(`❌ ${e.message || 'Upload failed'}`, "error");
     } finally {
       setUploading(false);
-    }
-  };
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.5,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
-
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      uploadImage(result.assets[0].uri);
     }
   };
 
@@ -274,7 +251,7 @@ const handleResetMonth = () => {
             </View>
             <Button 
               title={uploading ? "Uploading..." : "Change Photo"} 
-              onPress={pickImage} 
+              onPress={handleChangePhoto} 
               disabled={uploading}
               variant="primary" 
               style={{marginBottom: SPACING.lg}}

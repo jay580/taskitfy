@@ -14,7 +14,8 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage as pickImageUtil } from '../../utils/imagePicker';
+import { uploadMultipleToCloudinary } from '../../services/uploadImage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -31,8 +32,10 @@ import type { Task, Submission, TaskCategory } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
 import FadeInView from '../../components/FadeInView';
 import TaskCard from '../../components/TaskCard';
+import { TasksSkeleton } from '../../components/SkeletonComponents';
 import { getTaskStatus, getTaskStatusLabel } from '../../utils/taskStatus';
 
+const MAX_IMAGES = 5;
 const PRIMARY_TABS = ['Available', 'Submissions', 'Completed'];
 const CATEGORIES = ['All', 'Academic', 'Domestic', 'Sports', 'Special'];
 
@@ -82,6 +85,7 @@ export default function TasksScreen({ route }: any) {
   const [selfSubmitting, setSelfSubmitting] = useState(false);
   const [selfPhotos, setSelfPhotos] = useState<string[]>([]);
   const [selfPhotoUploading, setSelfPhotoUploading] = useState(false);
+  const [selfUploadFailed, setSelfUploadFailed] = useState(false);
 
   const fabScale = useRef(new Animated.Value(1)).current;
 
@@ -127,9 +131,18 @@ export default function TasksScreen({ route }: any) {
       showToast("⚠️ Title and description required", "error");
       return;
     }
+    if (selfSubmitting) return; // Prevent double submission
     setSelfSubmitting(true);
+    setSelfUploadFailed(false);
     try {
-      await submitSelfTask(uid, selfTitle.trim(), selfDesc.trim(), selfPhotos, undefined);
+      // Upload all selected photos to Cloudinary first
+      let uploadedUrls: string[] = [];
+      if (selfPhotos.length > 0) {
+        showToast("📤 Uploading photos...", "info");
+        uploadedUrls = await uploadMultipleToCloudinary(selfPhotos);
+      }
+
+      await submitSelfTask(uid, selfTitle.trim(), selfDesc.trim(), uploadedUrls, undefined);
       showToast("🎯 Self-task submitted for review!", "success");
       setSelfTaskModalVisible(false);
       setSelfTitle('');
@@ -138,22 +151,22 @@ export default function TasksScreen({ route }: any) {
       await loadData();
     } catch (e: any) {
       showToast(`❌ ${e.message}`, "error");
+      setSelfUploadFailed(true);
     } finally {
       setSelfSubmitting(false);
     }
   };
 
   const handlePickPhoto = async () => {
+    if (selfPhotos.length >= MAX_IMAGES) {
+      showToast(`⚠️ Maximum ${MAX_IMAGES} images allowed`, 'error');
+      return;
+    }
     setSelfPhotoUploading(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const picked = result.assets.map((asset) => asset.uri).filter(Boolean);
-        setSelfPhotos((prev) => Array.from(new Set([...prev, ...picked])));
+      const uri = await pickImageUtil();
+      if (uri) {
+        setSelfPhotos((prev) => Array.from(new Set([...prev, uri])));
       }
     } catch (e) {
       showToast('Failed to pick image', 'error');
@@ -222,8 +235,10 @@ export default function TasksScreen({ route }: any) {
 
   if (loading) {
     return (
-      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.secondary} />
+      <LinearGradient colors={[COLORS.gradientBgStart, COLORS.gradientBgEnd]} style={styles.container}>
+        <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+          <TasksSkeleton />
+        </SafeAreaView>
       </LinearGradient>
     );
   }
@@ -348,10 +363,10 @@ export default function TasksScreen({ route }: any) {
               />
 
               <Text style={styles.selfTaskLabel}>Photo (optional)</Text>
-              <TouchableOpacity style={styles.photoUploadBtn} onPress={handlePickPhoto} disabled={selfPhotoUploading}>
+              <TouchableOpacity style={[styles.photoUploadBtn, selfPhotos.length >= MAX_IMAGES && { opacity: 0.4 }]} onPress={handlePickPhoto} disabled={selfPhotoUploading || selfPhotos.length >= MAX_IMAGES}>
                 <MaterialCommunityIcons name="camera" size={20} color={COLORS.white} />
                 <Text style={styles.photoUploadText}>
-                  {selfPhotos.length > 0 ? 'Add/Change Photos' : 'Upload Photos'}
+                  {selfPhotos.length >= MAX_IMAGES ? `Max ${MAX_IMAGES} Photos` : selfPhotos.length > 0 ? `Add Photos (${selfPhotos.length}/${MAX_IMAGES})` : 'Upload Photos'}
                 </Text>
               </TouchableOpacity>
               
@@ -373,8 +388,8 @@ export default function TasksScreen({ route }: any) {
                 onPress={handleSubmitSelfTask}
                 disabled={selfSubmitting}
               >
-                <MaterialCommunityIcons name="send" size={20} color={COLORS.white} />
-                <Text style={styles.selfTaskSubmitText}>{selfSubmitting ? "Submitting..." : "Submit for Review"}</Text>
+                <MaterialCommunityIcons name={selfUploadFailed ? "refresh" : "send"} size={20} color={COLORS.white} />
+                <Text style={styles.selfTaskSubmitText}>{selfSubmitting ? "Uploading & Submitting..." : selfUploadFailed ? "Retry Submit" : "Submit for Review"}</Text>
               </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
