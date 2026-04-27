@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { User } from 'firebase/auth';
 import { onAuthStateChanged, loginWithEmail, logout as authLogout } from '../services/auth';
 import { getUserProfile, createDefaultUserProfile } from '../services/firestore';
+import { db } from '../services/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import type { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -44,8 +46,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
           return;
         }
-        
+
         try {
+          // Attempt to reload the user to get the latest emailVerified status
+          try {
+            await user.reload();
+          } catch (reloadErr) {
+            if (__DEV__) console.warn('Failed to reload user:', reloadErr);
+          }
+          
           let profile = await getUserProfile(user.uid);
           // Auto-create profile if missing (for manually created Firebase Auth users)
           if (!profile) {
@@ -55,9 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               user.displayName || undefined
             );
           }
+
+          // Global Sync Listener: Sync Auth email to Firestore if verified and mismatched
+          if (user.emailVerified && user.email && profile.email !== user.email) {
+            await updateDoc(doc(db, 'users', user.uid), { email: user.email });
+            profile.email = user.email; // Update local state immediately
+          }
+
           setUserProfile(profile);
         } catch (err) {
-          console.error('Error fetching user profile:', err);
+          if (__DEV__) console.error('Error fetching user profile:', err);
           setUserProfile(null);
         }
       } else {

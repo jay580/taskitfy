@@ -284,7 +284,7 @@ export default function DashboardScreen() {
                          )}
                        </View>
                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-                         <Text style={styles.leadRoom}>{student.teamName ? `Team ${student.teamName}` : ''}</Text>
+                         <Text style={styles.leadRoom}>{student.team !== 'No Team' ? `Team ${student.team.charAt(0).toUpperCase() + student.team.slice(1)}` : 'No Team'}</Text>
                          {student.streakDays > 1 && (
                             <View style={styles.streakBadge}>
                                <MaterialCommunityIcons name="fire" size={12} color={COLORS.accent} />
@@ -293,7 +293,7 @@ export default function DashboardScreen() {
                          )}
                        </View>
                      </View>
-                     <Text style={styles.leadPoints}>{student.pointsThisMonth} pts</Text>
+                     <Text style={styles.leadPoints}>{student.points} pts</Text>
                    </View>
                  </FadeInView>
                ))}
@@ -331,10 +331,10 @@ export default function DashboardScreen() {
                  <Text style={styles.sectionTitle}>Submitted By</Text>
                  <View style={styles.verifyStudentCard}>
                    <AppAvatar user={studentInfo} size={50} />
-                   <View style={{flex: 1}}>
-                     <Text style={styles.subStudentName}>{studentInfo?.name || selectedSubmission.studentId}</Text>
-                     <Text style={styles.subTaskTitle}>{studentInfo?.teamName ? `Team ${studentInfo.teamName}` : 'No Team'}</Text>
-                   </View>
+                    <View style={{flex: 1}}>
+                      <Text style={styles.subStudentName}>{studentInfo?.name || selectedSubmission.studentId}</Text>
+                      <Text style={styles.subTaskTitle}>{studentInfo?.team && studentInfo.team !== 'No Team' ? `Team ${studentInfo.team.charAt(0).toUpperCase() + studentInfo.team.slice(1)}` : 'No Team'}</Text>
+                    </View>
                    <View style={{alignItems: 'flex-end'}}>
                      <Text style={{color: COLORS.mutedText, fontSize: 12, fontWeight: 'bold'}}>ID</Text>
                      <Text style={{color: COLORS.textDark, fontWeight: 'bold'}}>{studentInfo?.studentId || selectedSubmission.studentId}</Text>

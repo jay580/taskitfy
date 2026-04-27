@@ -1,8 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions,Image } from 'react-native';
 import { Text } from 'react-native-paper';
 import { COLORS } from '../theme';
 import Logo from './Logo';
+
+
+import * as SplashScreen from 'expo-splash-screen';
+
+const { width } = Dimensions.get('window');
+const LOGO_SIZE = width * 0.45; // ~40-50% width
 
 export default function AnimatedSplashScreen({ onAnimationComplete }: { onAnimationComplete: () => void }) {
   const scaleValue = useRef(new Animated.Value(0.5)).current;
@@ -10,6 +16,9 @@ export default function AnimatedSplashScreen({ onAnimationComplete }: { onAnimat
   const contentOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    // Hide native splash screen immediately to prevent flicker
+    SplashScreen.hideAsync().catch(() => {});
+
     // Sequence: Pop in (scale & opacity), wait, fade out (opacity)
     Animated.sequence([
       Animated.parallel([
@@ -40,8 +49,10 @@ export default function AnimatedSplashScreen({ onAnimationComplete }: { onAnimat
     <View style={styles.container}>
       <Animated.View style={[styles.content, { opacity: contentOpacity }]}>
         <Animated.View style={{ transform: [{ scale: scaleValue }], opacity: opacityValue, alignItems: 'center' }}>
-          <Logo size={80} />
-          <Text style={styles.title}>TASK BUZZ</Text>
+          <Image
+                  source={require('../../assets/splash.png')}
+                  resizeMode="contain"
+                />
         </Animated.View>
       </Animated.View>
     </View>

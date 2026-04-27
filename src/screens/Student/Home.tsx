@@ -20,9 +20,9 @@ import { useUser } from '../../hooks/useUser';
 import {
   getAvailableTasks,
   getAppSettings,
-  getLeaderboard,
   claimReward,
 } from '../../services/firestore';
+import { getLeaderboardOnce } from '../../services/users';
 import type { Task, AppSettings } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
 import { AppAvatar } from '../../components/Avatar';
@@ -52,13 +52,13 @@ export default function HomeScreen() {
       const [taskList, appSettings, leaderboard] = await Promise.all([
         getAvailableTasks(),
         getAppSettings(),
-        getLeaderboard(),
+        getLeaderboardOnce(),
       ]);
       setTasks(taskList);
       setSettings(appSettings);
 
       if (userProfile) {
-        const idx = leaderboard.findIndex((e) => e.uid === userProfile.uid);
+        const idx = leaderboard.findIndex((e: any) => e.uid === userProfile.uid);
         setRank(idx >= 0 ? idx + 1 : 0);
       }
     } catch (err) {
@@ -152,7 +152,7 @@ export default function HomeScreen() {
 
   const displayUser = user || userProfile;
   const displayName = displayUser?.name ?? 'Student';
-  const points = displayUser?.pointsThisMonth ?? 0;
+  const points = displayUser?.points ?? 0;
   const streak = displayUser?.streakDays ?? 0;
 
   return (

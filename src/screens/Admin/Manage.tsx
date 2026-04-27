@@ -183,7 +183,7 @@ export default function ManageScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteStudent(student.uid, student.teamId, student.email, student.studentId);
+              await deleteStudent(student.uid, student.team, student.email, student.studentId);
               showToast("🗑️ Student removed", "success");
             } catch (e: any) {
               showToast(`⚠️ ${e.message}`, "error");
@@ -255,14 +255,14 @@ export default function ManageScreen() {
           </View>
         </View>
 
-        <View style={styles.glassSwitch}>
+       {/* <View style={styles.glassSwitch}>
           <Text style={styles.switchLabel}>Team Task?</Text>
           <Switch value={isTeamTask} onValueChange={setIsTeamTask} trackColor={{ false: COLORS.border, true: COLORS.success }} thumbColor={COLORS.white} />
         </View>
         <View style={styles.glassSwitch}>
           <Text style={styles.switchLabel}>Repeatable?</Text>
           <Switch value={isRepeatable} onValueChange={setIsRepeatable} trackColor={{ false: COLORS.border, true: COLORS.success }} thumbColor={COLORS.white} />
-        </View>
+        </View>*/}
 
         <Button title="Create Task" onPress={handleCreateTask} style={{ marginTop: SPACING.md }} />
       </View>
@@ -357,10 +357,10 @@ export default function ManageScreen() {
                     <Text style={styles.itemTitle}>{s.name}</Text>
                     {s.isSuspended && <Badge label="SUSPENDED" backgroundColor={COLORS.error} textColor={COLORS.white} />}
                   </View>
-                  <Text style={{ color: COLORS.mutedText, marginTop: 4 }}>{s.studentId} • {s.teamId ? `Team ${s.teamId.charAt(0).toUpperCase() + s.teamId.slice(1)}` : 'No Team'}</Text>
+                  <Text style={{ color: COLORS.mutedText, marginTop: 4 }}>{s.studentId} • {s.team !== 'No Team' ? `Team ${s.team.charAt(0).toUpperCase() + s.team.slice(1)}` : 'No Team'}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.accent }}>{s.pointsThisMonth} pts</Text>
+                  <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.accent }}>{s.points} pts</Text>
                 </View>
               </View>
               
@@ -540,7 +540,7 @@ export default function ManageScreen() {
                 </View>
                 <View style={styles.detailItem}>
                   <Text style={styles.credLabel}>Team</Text>
-                  <Text style={styles.credValue}>{selectedStudent.teamId ? selectedStudent.teamId.charAt(0).toUpperCase() + selectedStudent.teamId.slice(1) : 'None'}</Text>
+                  <Text style={styles.credValue}>{selectedStudent.team !== 'No Team' ? selectedStudent.team.charAt(0).toUpperCase() + selectedStudent.team.slice(1) : 'None'}</Text>
                 </View>
                 <View style={styles.detailItem}>
                   <Text style={styles.credLabel}>Date of Birth</Text>

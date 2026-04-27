@@ -9,12 +9,18 @@ export interface UserSchema {
   id: string;
   uid: string;
   name: string;
+  team: string; // Normalized centralized team string
+  points: number; // Normalized centralized points
+  avatar: string | null; // Normalized centralized avatar
   studentId: string;
-  teamId: TeamId | '';
+  /** @deprecated Use `team` instead */
+  teamId: string;
+  /** @deprecated Use `team` instead */
   teamName: string;
   dateOfBirth: string;
   email: string;
   role: 'admin' | 'student';
+  /** @deprecated Use `points` instead */
   pointsThisMonth: number;
   totalTasksDone: number;
   rewardsWon: number;
@@ -24,9 +30,51 @@ export interface UserSchema {
   isActive: boolean;
   isSuspended: boolean;
   suspensionEnd?: Date;
+  /** @deprecated Use `avatar` instead */
   profileImage: string | null;
   needsProfileUpdate?: boolean;
 }
+
+/**
+ * Centrally normalizes raw Firestore data into a consistent UserSchema shape.
+ * Ensures we always have a `team` (string), `points` (number), and `avatar` (string | null).
+ */
+export const normalizeStudent = (data: any, id: string): UserSchema => {
+  let teamStr = "No Team";
+  if (data.team && typeof data.team === 'string') teamStr = data.team;
+  else if (data.teamName) teamStr = data.teamName;
+  else if (data.team_name) teamStr = data.team_name;
+  else if (data.teamId) teamStr = data.teamId;
+  else if (data.team && data.team.name) teamStr = data.team.name;
+
+  return {
+    id: id,
+    uid: id,
+    name: data.name || '',
+    team: teamStr,
+    points: data.points || data.pointsThisMonth || 0,
+    avatar: data.avatar || data.profileImage || null,
+    
+    // Core original fields mapping
+    studentId: data.studentId || '',
+    teamId: data.teamId || '',
+    teamName: data.teamName || '',
+    dateOfBirth: data.dateOfBirth || '',
+    email: data.email || '',
+    role: data.role || 'student',
+    pointsThisMonth: data.pointsThisMonth || 0,
+    totalTasksDone: data.totalTasksDone || 0,
+    rewardsWon: data.rewardsWon || 0,
+    rewardClaimed: data.rewardClaimed || false,
+    streakDays: data.streakDays || 0,
+    badges: data.badges || [],
+    isActive: data.isActive !== false,
+    isSuspended: data.isSuspended || false,
+    suspensionEnd: data.suspensionEnd?.toDate?.() || undefined,
+    profileImage: data.profileImage || null,
+    needsProfileUpdate: data.needsProfileUpdate || false,
+  };
+};
 
 /**
  * Generates a student ID based on name and DOB.
@@ -92,6 +140,9 @@ export const createStudent = async (name: string, teamId: TeamId, dateOfBirth: s
       id: uid,
       uid,
       name,
+      team: teamId || 'No Team', // Provide fallback for TS
+      points: 0,                 // Provide fallback for TS
+      avatar: null,              // Provide fallback for TS
       studentId,
       teamId,
       teamName: '', // Legacy field
@@ -119,7 +170,7 @@ export const createStudent = async (name: string, teamId: TeamId, dateOfBirth: s
 
     return { studentId, email, password };
   } catch (error) {
-    console.error("Error creating student: ", error);
+    if (__DEV__) console.error("Error creating student: ", error);
     throw error;
   }
 };
@@ -135,41 +186,19 @@ export const observeStudents = (callback: (users: UserSchema[]) => void) => {
     const students: UserSchema[] = [];
     snapshot.forEach((doc) => {
       const data = doc.data();
-      students.push({
-        id: doc.id,
-        uid: doc.id,
-        name: data.name || '',
-        studentId: data.studentId || '',
-        teamId: data.teamId || '',
-        teamName: data.teamName || '',
-        dateOfBirth: data.dateOfBirth || '',
-        email: data.email || '',
-        role: 'student',
-        pointsThisMonth: data.pointsThisMonth || 0,
-        totalTasksDone: data.totalTasksDone || 0,
-        rewardsWon: data.rewardsWon || 0,
-        rewardClaimed: data.rewardClaimed || false,
-        streakDays: data.streakDays || 0,
-        badges: data.badges || [],
-        isActive: data.isActive !== false,
-        isSuspended: data.isSuspended || false,
-        suspensionEnd: data.suspensionEnd?.toDate?.() || undefined,
-        profileImage: data.profileImage || null,
-        needsProfileUpdate: data.needsProfileUpdate || false,
-      });
+      students.push(normalizeStudent(data, doc.id));
     });
     // Filter out inactive students in the observer
     callback(students.filter(s => s.isActive !== false));
   }, error => {
-    console.error("Error observing students: ", error);
+    if (__DEV__) console.error("Error observing students: ", error);
   });
 };
 
 export const observeLeaderboard = (callback: (users: UserSchema[]) => void) => {
   const q = query(
     collection(db, 'users'),
-    where('role', '==', 'student'),
-    orderBy('pointsThisMonth', 'desc')
+    where('role', '==', 'student')
   );
 
   return onSnapshot(q, (snapshot) => {
@@ -177,32 +206,25 @@ export const observeLeaderboard = (callback: (users: UserSchema[]) => void) => {
     snapshot.forEach((doc) => {
       const data = doc.data();
       if (data.isActive === false) return; // Skip inactive students
-      students.push({
-        id: doc.id,
-        uid: doc.id,
-        name: data.name || '',
-        studentId: data.studentId || '',
-        teamId: data.teamId || '',
-        teamName: data.teamName || '',
-        dateOfBirth: data.dateOfBirth || '',
-        email: data.email || '',
-        role: 'student',
-        pointsThisMonth: data.pointsThisMonth || 0,
-        totalTasksDone: data.totalTasksDone || 0,
-        rewardsWon: data.rewardsWon || 0,
-        rewardClaimed: data.rewardClaimed || false,
-        streakDays: data.streakDays || 0,
-        badges: data.badges || [],
-        isActive: data.isActive !== false,
-        isSuspended: data.isSuspended || false,
-        profileImage: data.profileImage || null,
-        needsProfileUpdate: data.needsProfileUpdate || false,
-      });
+      students.push(normalizeStudent(data, doc.id));
     });
+    // Sort by points descending client-side
+    students.sort((a, b) => b.points - a.points);
     callback(students);
   }, error => {
-    console.error("Error observing leaderboard: ", error);
+    if (__DEV__) console.error("Error observing leaderboard: ", error);
   });
+};
+
+export const getLeaderboardOnce = async (): Promise<UserSchema[]> => {
+  const q = query(
+    collection(db, 'users'),
+    where('role', '==', 'student'),
+    where('isActive', '==', true)
+  );
+  const snap = await getDocs(q);
+  const students = snap.docs.map(doc => normalizeStudent(doc.data(), doc.id));
+  return students.sort((a, b) => b.points - a.points);
 };
 
 export const updateUserPoints = async (userId: string, points: number) => {
@@ -213,7 +235,7 @@ export const updateUserPoints = async (userId: string, points: number) => {
       totalTasksDone: increment(1)
     });
   } catch (error) {
-    console.error("Error updating user points: ", error);
+    if (__DEV__) console.error("Error updating user points: ", error);
     throw error;
   }
 };
@@ -229,7 +251,7 @@ export const awardAdminPoints = async (userId: string, points: number) => {
       pointsThisMonth: increment(points),
     });
   } catch (error) {
-    console.error("Error awarding points: ", error);
+    if (__DEV__) console.error("Error awarding points: ", error);
     throw error;
   }
 };
@@ -265,11 +287,11 @@ export const deleteStudent = async (userId: string, teamId: string, email?: stri
       } catch {
         // Silently ignore — either password was changed or account already gone.
         // The Firestore deletion is the source of truth; Auth orphan is non-critical.
-        console.info(`Auth user ${userId} could not be deleted client-side (likely changed password). Firestore record removed.`);
+        if (__DEV__) console.info(`Auth user ${userId} could not be deleted client-side (likely changed password). Firestore record removed.`);
       }
     }
   } catch (error) {
-    console.error("Error deleting student: ", error);
+    if (__DEV__) console.error("Error deleting student: ", error);
     throw error;
   }
 };
@@ -294,7 +316,7 @@ export const updateStudentSuspension = async (userId: string, durationDays: numb
       });
     }
   } catch (error) {
-    console.error("Error updating suspension: ", error);
+    if (__DEV__) console.error("Error updating suspension: ", error);
     throw error;
   }
 };
@@ -306,7 +328,7 @@ export const incrementRewardsWon = async (userId: string) => {
       rewardsWon: increment(1)
     });
   } catch (error) {
-    console.error("Error incrementing rewards won: ", error);
+    if (__DEV__) console.error("Error incrementing rewards won: ", error);
     throw error;
   }
 };

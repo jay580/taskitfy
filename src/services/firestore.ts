@@ -331,30 +331,8 @@ export const rejectSubmission = async (
 };
 
 // ─── Leaderboard ───
-export const getLeaderboard = async (): Promise<LeaderboardEntry[]> => {
-  const q = query(
-    collection(db, 'users'),
-    where('role', '==', 'student'),
-    where('isActive', '==', true),
-    orderBy('pointsThisMonth', 'desc'),
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d, idx) => {
-    const data = d.data();
-    return {
-      uid: d.id,
-      name: data.name ?? '',
-      initials: getInitials(data.name ?? ''),
-      profileImage: data.profileImage ?? null,
-      teamId: data.teamId ?? '',
-      teamName: data.teamName ?? '',
-      totalTasksDone: data.totalTasksDone ?? 0,
-      points: data.pointsThisMonth ?? 0,
-      rank: idx + 1,
-      rewardClaimed: data.rewardClaimed ?? false,
-    };
-  });
-};
+// getLeaderboard has been removed in favor of real-time observeLeaderboard in src/services/users.ts
+
 
 // ─── Settings ───
 export const getAppSettings = async (): Promise<AppSettings | null> => {

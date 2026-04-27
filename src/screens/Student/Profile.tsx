@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { pickImage as pickImageUtil } from '../../utils/imagePicker';
 import { uploadToCloudinary } from '../../services/uploadImage';
 import { updateDoc, doc } from 'firebase/firestore';
-import { verifyBeforeUpdateEmail } from 'firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, updateEmail, sendEmailVerification, verifyBeforeUpdateEmail } from 'firebase/auth';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useUser } from '../../hooks/useUser';
@@ -45,6 +45,7 @@ export default function ProfileScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [changingEmail, setChangingEmail] = useState(false);
   const [emailLinkSent, setEmailLinkSent] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
 
   // DOB state
   const [dobModalVisible, setDobModalVisible] = useState(false);
@@ -104,20 +105,31 @@ export default function ProfileScreen() {
   const handleChangeEmail = async () => {
     if (!newEmail || !newEmail.includes('@')) return showToast("⚠️ Valid email required", "error");
     if (newEmail === displayUser?.email) return showToast("⚠️ Email is the same", "error");
+    if (!currentPassword) return showToast("⚠️ Current password required", "error");
     
     setChangingEmail(true);
     try {
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) throw new Error("No authenticated user.");
+      if (!firebaseUser.email) throw new Error("Current user email is missing.");
       
-      // Update Firebase Auth - sends verification link
-      await verifyBeforeUpdateEmail(firebaseUser, newEmail);
+      if (__DEV__) {
+        console.log("Sending verification email...");
+        console.log("User:", firebaseUser.email);
+      }
       
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+      console.log(firebaseUser.emailVerified);  
+      await verifyBeforeUpdateEmail(firebaseUser, newEmail)
+      console.log("Verification email sent!");
       setEmailLinkSent(true);
       showToast("✉️ Verification link sent! Check your new email.", "success");
       
     } catch (e: any) {
-      if (e.code === 'auth/requires-recent-login') {
+      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+         showToast("❌ Incorrect current password.", "error");
+      } else if (e.code === 'auth/requires-recent-login') {
          showToast("❌ Please log out and back in to change email.", "error");
       } else {
          showToast(`❌ ${e.message}`, "error");
@@ -136,7 +148,7 @@ export default function ProfileScreen() {
       // Reload the user data from Firebase to check if they clicked the link
       await firebaseUser.reload();
       
-      if (firebaseUser.email === newEmail) {
+      if (firebaseUser.emailVerified && firebaseUser.email === newEmail) {
         // Verification was successful! Update Firestore now.
         const uid = user?.uid || userProfile?.uid || firebaseUser.uid;
         await updateDoc(doc(db, 'users', uid), { email: newEmail });
@@ -144,6 +156,7 @@ export default function ProfileScreen() {
         showToast("✅ Email changed and synced successfully!", "success");
         setEmailModalVisible(false);
         setEmailLinkSent(false);
+        setCurrentPassword('');
       } else {
         showToast("⚠️ Email not verified yet. Please click the link in your inbox.", "error");
       }
@@ -220,10 +233,10 @@ export default function ProfileScreen() {
 
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroName}>{displayUser?.name || 'Student'}</Text>
-                {displayUser?.teamId ? (
+                {displayUser?.team !== "No Team" ? (
                   <View style={styles.heroTeamBadge}>
                     <MaterialCommunityIcons name="shield-star" size={14} color={COLORS.accent} />
-                    <Text style={styles.heroTeamText}>Team {displayUser.teamId.charAt(0).toUpperCase() + displayUser.teamId.slice(1)}</Text>
+                    <Text style={styles.heroTeamText}>Team {displayUser?.team?.charAt(0).toUpperCase() + displayUser?.team?.slice(1)}</Text>
                   </View>
                 ) : (
                   <Text style={styles.heroSubtitle}>{displayUser?.email}</Text>
@@ -234,7 +247,7 @@ export default function ProfileScreen() {
             {/* Micro Stats inside Hero */}
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatValue}>{displayUser?.pointsThisMonth || 0}</Text>
+                <Text style={styles.heroStatValue}>{displayUser?.points || 0}</Text>
                 <Text style={styles.heroStatLabel}>Points</Text>
               </View>
               <View style={styles.heroStatDivider} />
@@ -264,10 +277,10 @@ export default function ProfileScreen() {
           <Card style={styles.glassGroupCard}>
             {renderActionRow('account-edit', COLORS.link, 'Edit Profile Photo', 'Update your avatar', handleChangePhoto)}
             {renderActionRow('lock-reset', COLORS.warning, 'Change Password', 'Update your security key', () => setEditModalVisible(true))}
-            {renderActionRow('email', COLORS.mutedText, 'Email Address', displayUser?.email || 'N/A', () => {
+            {/* {renderActionRow('email', COLORS.mutedText, 'Email Address', displayUser?.email || 'N/A', () => {
               setNewEmail(displayUser?.email || '');
               setEmailModalVisible(true);
-            }, false)}
+            }, false)} */}
           </Card>
         </FadeInView>
 
@@ -358,14 +371,29 @@ export default function ProfileScreen() {
               }}
             />
 
+            {!emailLinkSent && (
+              <>
+                <Text style={styles.modalLabel}>Current Password</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter current password"
+                  placeholderTextColor={COLORS.mutedText}
+                  secureTextEntry
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                />
+              </>
+            )}
+
             {!emailLinkSent ? (
               <TouchableOpacity style={styles.saveBtn} onPress={handleChangeEmail} disabled={changingEmail}>
                 <Text style={styles.saveBtnText}>{changingEmail ? "Sending..." : "Send Verification Link"}</Text>
               </TouchableOpacity>
             ) : (
               <View style={{ marginTop: SPACING.md }}>
-                <Text style={{ color: COLORS.success, fontSize: 13, marginBottom: SPACING.md, textAlign: 'center' }}>
-                  ✉️ Verification link sent! Please click the link in your inbox to verify, then tap the button below.
+                <Text style={{ color: COLORS.success, fontSize: 13, marginBottom: SPACING.md, textAlign: 'center', lineHeight: 20 }}>
+                  ✉️ Verification link sent! Please click the link in your inbox to verify, then tap the button below.{"\n\n"}
+                  Note: Your new email will not be fully activated until you verify it.
                 </Text>
                 <TouchableOpacity style={[styles.saveBtn, { backgroundColor: COLORS.success }]} onPress={handleConfirmEmailChange} disabled={changingEmail}>
                   <Text style={styles.saveBtnText}>{changingEmail ? "Checking..." : "I have verified it, Update"}</Text>

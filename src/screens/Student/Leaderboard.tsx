@@ -15,8 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
-import { getLeaderboard, claimReward, getAppSettings } from '../../services/firestore';
+import { claimReward, getAppSettings } from '../../services/firestore';
 import { observeTeamLeaderboard, TeamSchema } from '../../services/teams';
+import { observeLeaderboard, UserSchema } from '../../services/users';
 import type { LeaderboardEntry, AppSettings } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../theme';
 import FadeInView from '../../components/FadeInView';
@@ -132,24 +133,29 @@ export default function LeaderboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [leaderboardData, appSettings] = await Promise.all([
-        getLeaderboard(),
-        getAppSettings()
-      ]);
-      setEntries(leaderboardData);
+      const appSettings = await getAppSettings();
       setSettings(appSettings);
     } catch (err) {
-      console.error('Error loading leaderboard:', err);
-    } finally {
-      setLoading(false);
+      console.error('Error loading settings:', err);
     }
   }, []);
 
   useEffect(() => {
     setLoading(true);
     loadData();
+    const unsubLead = observeLeaderboard((data) => {
+      // Add rank and initials after sorting/normalization
+      // Data is already sorted by observeLeaderboard (pointsThisMonth desc)
+      const formatted = data.map((item, idx) => ({
+        ...item,
+        rank: idx + 1,
+        initials: item.name.split(' ').map(n => n[0]).join('').toUpperCase()
+      }));
+      setEntries(formatted as any);
+      setLoading(false);
+    });
     const unsubTeams = observeTeamLeaderboard(setTeams);
-    return () => unsubTeams();
+    return () => { unsubLead(); unsubTeams(); };
   }, [loadData]);
 
   const onRefresh = useCallback(async () => {
@@ -189,7 +195,7 @@ export default function LeaderboardScreen() {
       <View key={item.uid} style={[styles.podiumItem, isCenter ? styles.podiumCenter : null]}>
         <View style={[styles.avatarGlow, { shadowColor: style.glow, elevation: isCenter ? 12 : 6 }]}>
           <LeaderboardAvatar
-            profileImage={item.profileImage}
+            profileImage={item.avatar}
             initials={item.initials}
             size={isCenter ? 68 : 54}
             borderColor={style.glow}
@@ -214,7 +220,7 @@ export default function LeaderboardScreen() {
     );
   };
 
-  const renderListItem = ({ item }: { item: LeaderboardEntry }) => {
+  const renderListItem = useCallback(({ item }: { item: LeaderboardEntry }) => {
     const isMe = item.uid === uid;
     const isTop3 = item.rank <= 3;
     const styleIdx = isTop3 ? item.rank - 1 : 2;
@@ -231,9 +237,9 @@ export default function LeaderboardScreen() {
           
           <Text style={[styles.listRank, isTop3 && { color: style.glow }]}>#{item.rank}</Text>
 
-          {item.profileImage ? (
+          {item.avatar ? (
             <Image
-              source={{ uri: item.profileImage }}
+              source={{ uri: item.avatar }}
               style={[styles.listAvatar, isTop3 && { borderColor: style.glow }]}
             />
           ) : (
@@ -255,7 +261,7 @@ export default function LeaderboardScreen() {
               )}
             </View>
             <Text style={styles.listSubtext}>
-              {item.teamId ? `${item.teamId.charAt(0).toUpperCase() + item.teamId.slice(1)} • ` : ''}{item.totalTasksDone} tasks
+              {item.team !== 'No Team' ? `${item.team.charAt(0).toUpperCase() + item.team.slice(1)} • ` : ''}{item.totalTasksDone} tasks
             </Text>
           </View>
 
@@ -266,9 +272,9 @@ export default function LeaderboardScreen() {
         </View>
       </FadeInView>
     );
-  };
+  }, [uid]);
 
-  const renderTeamItem = ({ item, index }: { item: TeamSchema; index: number }) => {
+  const renderTeamItem = useCallback(({ item, index }: { item: TeamSchema; index: number }) => {
     const rank = index + 1;
     return (
       <FadeInView delay={rank * 50}>
@@ -292,7 +298,7 @@ export default function LeaderboardScreen() {
         </View>
       </FadeInView>
     );
-  };
+  }, []);
 
   if (loading) {
     return (
@@ -348,7 +354,7 @@ export default function LeaderboardScreen() {
         <View style={styles.listContainer}>
           <FlatList
             data={activeTab === 'Student Rank' ? entries : teams as any}
-            keyExtractor={(item: any, index) => ('uid' in item ? item.uid : item.id) || index.toString()}
+            keyExtractor={(item: any) => ('uid' in item ? item.uid : item.id)}
             renderItem={activeTab === 'Student Rank' ? renderListItem as any : renderTeamItem as any}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.flatListContent}

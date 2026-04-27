@@ -29,7 +29,7 @@ export default function App() {
               <AnimatedSplashScreen 
                 onAnimationComplete={async () => {
                   setIsAppReady(true);
-                  await SplashScreen.hideAsync();
+                  
                 }} 
               />
             )}

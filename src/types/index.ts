@@ -5,14 +5,21 @@ export type TeamId = 'earth' | 'water' | 'fire' | 'wind';
 export interface UserProfile {
   uid: string;
   name: string;
+  team: string;              // SINGLE SOURCE OF TRUTH
+  points: number;            // SINGLE SOURCE OF TRUTH
+  avatar: string | null;     // SINGLE SOURCE OF TRUTH
   studentId?: string;        // e.g., "STU001"
-  teamId: TeamId | '';       // new standard
-  teamName: string;          // kept temporarily for verification
+  /** @deprecated Use `team` instead */
+  teamId?: TeamId | '';       
+  /** @deprecated Use `team` instead */
+  teamName?: string;          
+  /** @deprecated Use `points` instead */
+  pointsThisMonth?: number;   
   dateOfBirth: string;       // "YYYY-MM-DD"
   email: string;
-  profileImage: string | null;
+  /** @deprecated Use `avatar` instead */
+  profileImage?: string | null;
   role: 'student' | 'admin';
-  pointsThisMonth: number;
   totalTasksDone: number;
   rewardsWon?: number;
   rewardClaimed?: boolean;
@@ -115,11 +122,10 @@ export interface LeaderboardEntry {
   uid: string;
   name: string;
   initials: string;
-  profileImage?: string | null;
-  teamId: TeamId | '';
-  teamName: string;
+  avatar: string | null;
+  team: string;
   totalTasksDone: number;
-  points: number;              // pointsThisMonth
+  points: number;
   rank: number;
   rewardClaimed?: boolean;
 }
