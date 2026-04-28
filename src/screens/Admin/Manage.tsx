@@ -47,7 +47,14 @@ export default function ManageScreen() {
 
   // === Announcements State ===
   const [announcementMsg, setAnnouncementMsg] = useState('');
-  const [expiryDays, setExpiryDays] = useState('7');
+  const [expiryAmount, setExpiryAmount] = useState('7');
+  const [expiryUnit, setExpiryUnit] = useState<'hours' | 'days'>('days');
+
+  // === Suspend Modal ===
+  const [suspendModalVisible, setSuspendModalVisible] = useState(false);
+  const [suspendTarget, setSuspendTarget] = useState<UserSchema | null>(null);
+  const [suspendAmount, setSuspendAmount] = useState('1');
+  const [suspendUnit, setSuspendUnit] = useState<'hours' | 'days'>('days');
 
   // === Student Details Modal ===
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -81,8 +88,11 @@ export default function ManageScreen() {
   const handleCreateTask = async () => {
     if (!taskTitle || !taskDesc || !taskCategory) return Alert.alert("Error", "Please fill required fields.");
     try {
+      const safeDur = Math.max(1, Number(taskDuration) || 1);
       const deadline = new Date();
-      deadline.setDate(deadline.getDate() + 7);
+      if (taskDurationType === 'minutes') deadline.setMinutes(deadline.getMinutes() + safeDur);
+      else if (taskDurationType === 'hours') deadline.setHours(deadline.getHours() + safeDur);
+      else deadline.setDate(deadline.getDate() + safeDur);
       await createTask({
         title: taskTitle,
         description: taskDesc,
@@ -134,8 +144,13 @@ export default function ManageScreen() {
   const handlePostAnnouncement = async () => {
     if (!announcementMsg) return showToast("⚠️ Message required", "error");
     try {
+      const amount = parseInt(expiryAmount || '7');
       const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + parseInt(expiryDays || '7'));
+      if (expiryUnit === 'hours') {
+        expiryDate.setHours(expiryDate.getHours() + amount);
+      } else {
+        expiryDate.setDate(expiryDate.getDate() + amount);
+      }
       await saveAnnouncement(announcementMsg, expiryDate);
       showToast("📣 Announcement posted globally", "success");
       setAnnouncementMsg('');
@@ -201,11 +216,26 @@ export default function ManageScreen() {
         { text: "Unsuspend", onPress: () => updateStudentSuspension(student.uid, null) }
       ]);
     } else {
-      Alert.alert("Suspend Student", `Suspend ${student.name} for how long?`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "3 Days", onPress: () => updateStudentSuspension(student.uid, 3), style: "destructive" },
-        { text: "7 Days", onPress: () => updateStudentSuspension(student.uid, 7), style: "destructive" },
-      ]);
+      setSuspendTarget(student);
+      setSuspendAmount('1');
+      setSuspendUnit('days');
+      setSuspendModalVisible(true);
+    }
+  };
+
+  const handleConfirmSuspend = async () => {
+    if (!suspendTarget) return;
+    const amount = parseInt(suspendAmount || '1');
+    if (amount <= 0) return showToast("⚠️ Enter a valid duration", "error");
+    // Convert hours to fractional days for the service
+    const durationDays = suspendUnit === 'hours' ? amount / 24 : amount;
+    try {
+      await updateStudentSuspension(suspendTarget.uid, durationDays);
+      showToast(`⏳ ${suspendTarget.name} suspended for ${amount} ${suspendUnit}`, "success");
+      setSuspendModalVisible(false);
+      setSuspendTarget(null);
+    } catch (e: any) {
+      showToast(`⚠️ ${e.message}`, "error");
     }
   };
 
@@ -282,27 +312,52 @@ export default function ManageScreen() {
             {(() => {
               const status = getTaskStatus({
                 createdAt: t.createdAt ?? null,
+                deadline: t.deadline,
                 duration: t.duration,
                 durationType: t.durationType,
               });
               const statusLabel = getTaskStatusLabel({
                 createdAt: t.createdAt ?? null,
+                deadline: t.deadline,
                 duration: t.duration,
                 durationType: t.durationType,
               });
               return (
                 <>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={styles.itemTitle}>{t.title}</Text>
-              <TouchableOpacity activeOpacity={0.7} onPress={() => toggleTaskActive(t.id!, t.isActive)}>
-                <Text style={{ color: t.isActive ? COLORS.warning : COLORS.success, fontWeight: 'bold' }}>
-                  {t.isActive ? 'Deactivate' : 'Activate'}
-                </Text>
-              </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[styles.itemTitle, { flex: 1 }]}>{t.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => toggleTaskActive(t.id!, t.isActive)}>
+                  <Text style={{ color: t.isActive ? COLORS.warning : COLORS.success, fontWeight: 'bold' }}>
+                    {t.isActive ? 'Deactivate' : 'Activate'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => Alert.alert(
+                    'Delete Task',
+                    `Are you sure you want to permanently delete "${t.title}"? This will remove it for all students too.`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: async () => {
+                        try {
+                          await deleteTask(t.id!);
+                          showToast('🗑️ Task deleted', 'success');
+                        } catch (e: any) {
+                          showToast(`⚠️ ${e.message}`, 'error');
+                        }
+                      }}
+                    ]
+                  )}
+                  style={{ padding: 4 }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={22} color={COLORS.error} />
+                </TouchableOpacity>
+              </View>
             </View>
             <Text style={{ color: COLORS.mutedText, marginTop: 4 }}>{t.points} pts • {t.category}</Text>
             <Text style={{ color: status === 'expired' ? COLORS.error : COLORS.link, marginTop: 4, fontSize: 12 }}>
-              {statusLabel || `⏳ ${t.duration || 0} ${t.durationType || 'hours'}`}
+              {status === 'expired' ? 'Expired' : statusLabel ? `⏳ Ends in ${statusLabel}` : `⏳ ${t.duration || 0} ${t.durationType || 'hours'}`}
             </Text>
                 </>
               );
@@ -447,14 +502,28 @@ export default function ManageScreen() {
           onChangeText={setAnnouncementMsg} 
           multiline 
         />
-        <TextInput 
-          style={styles.glassInput} 
-          placeholderTextColor={COLORS.muted}
-          placeholder="Expiry (Days)" 
-          value={expiryDays} 
-          onChangeText={setExpiryDays} 
-          keyboardType="numeric" 
-        />
+        <Text style={styles.label}>Announcement Expiry</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: SPACING.md }}>
+          <TextInput
+            style={[styles.glassInput, { flex: 1, marginBottom: 0 }]}
+            placeholderTextColor={COLORS.muted}
+            placeholder="Duration"
+            value={expiryAmount}
+            onChangeText={setExpiryAmount}
+            keyboardType="number-pad"
+          />
+          <View style={[styles.glassInput, { flex: 1, marginBottom: 0, padding: 0, justifyContent: 'center' }]}>
+            <Picker
+              selectedValue={expiryUnit}
+              onValueChange={(value) => setExpiryUnit(value as 'hours' | 'days')}
+              style={{ color: COLORS.textDark }}
+              dropdownIconColor={COLORS.textDark}
+            >
+              <Picker.Item label="Hours" value="hours" />
+              <Picker.Item label="Days" value="days" />
+            </Picker>
+          </View>
+        </View>
         <Button title="Post Announcement" onPress={handlePostAnnouncement} style={{ marginTop: SPACING.sm }} />
       </View>
     </View>
@@ -571,6 +640,49 @@ export default function ManageScreen() {
                 </View>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Suspend Duration Modal */}
+      <Modal visible={suspendModalVisible} animationType="fade" transparent onRequestClose={() => setSuspendModalVisible(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.credCard}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg}}>
+              <Text style={styles.sectionTitle}>Suspend Student</Text>
+              <TouchableOpacity onPress={() => setSuspendModalVisible(false)}>
+                <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: COLORS.mutedText, fontSize: 14, marginBottom: SPACING.md }}>
+              Suspend <Text style={{ color: COLORS.warning, fontWeight: 'bold' }}>{suspendTarget?.name}</Text> for:
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: SPACING.lg }}>
+              <TextInput
+                style={[styles.glassInput, { flex: 1, marginBottom: 0 }]}
+                placeholderTextColor={COLORS.muted}
+                placeholder="Duration"
+                value={suspendAmount}
+                onChangeText={setSuspendAmount}
+                keyboardType="number-pad"
+              />
+              <View style={[styles.glassInput, { flex: 1, marginBottom: 0, padding: 0, justifyContent: 'center' }]}>
+                <Picker
+                  selectedValue={suspendUnit}
+                  onValueChange={(value) => setSuspendUnit(value as 'hours' | 'days')}
+                  style={{ color: COLORS.textDark }}
+                  dropdownIconColor={COLORS.textDark}
+                >
+                  <Picker.Item label="Hours" value="hours" />
+                  <Picker.Item label="Days" value="days" />
+                </Picker>
+              </View>
+            </View>
+
+            <Button title="Confirm Suspension" onPress={handleConfirmSuspend} style={{ marginBottom: SPACING.sm }} />
+            <Button title="Cancel" variant="secondary" onPress={() => setSuspendModalVisible(false)} />
           </View>
         </View>
       </Modal>

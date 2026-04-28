@@ -20,23 +20,46 @@ export default function ForceUpdateProfileScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sendingVerification, setSendingVerification] = useState(false);
-  const [emailLinkSent, setEmailLinkSent] = useState(false);
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [emailUpdated, setEmailUpdated] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
 
-  const handleSendVerification = async () => {
+  const handleChangeEmail = async () => {
     if (!newEmail || !newEmail.includes('@')) return showToast("⚠️ Valid email required", "error");
     if (newEmail === firebaseUser?.email) return showToast("⚠️ Email is the same", "error");
+    if (!currentPassword) return showToast("⚠️ Enter your current password", "error");
 
-    setSendingVerification(true);
+    setChangingEmail(true);
     try {
-      if (!firebaseUser) throw new Error("No user found");
-      await verifyBeforeUpdateEmail(firebaseUser, newEmail);
-      setEmailLinkSent(true);
-      showToast("✉️ Verification link sent! Check your new email.", "success");
+      if (!firebaseUser || !firebaseUser.email) throw new Error("No user found");
+      
+      // Reauthenticate first
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+      
+      // Send verification to the NEW email with explicit settings
+      const actionCodeSettings = {
+        url: `https://ssiapp-6e196.firebaseapp.com`,
+        handleCodeInApp: false,
+      };
+      await verifyBeforeUpdateEmail(firebaseUser, newEmail, actionCodeSettings);
+      
+      // Update Firestore immediately
+      await updateDoc(doc(db, 'users', firebaseUser.uid), { email: newEmail });
+      
+      setEmailUpdated(true);
+      showToast("✉️ Verification link sent to " + newEmail + ". Check inbox & spam!", "success");
     } catch (e: any) {
-      showToast(`❌ ${e.message}`, "error");
+      console.error('Email change error:', e.code, e.message);
+      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+        showToast("❌ Incorrect password.", "error");
+      } else if (e.code === 'auth/email-already-in-use') {
+        showToast("❌ This email is already in use.", "error");
+      } else {
+        showToast(`❌ ${e.message}`, "error");
+      }
     } finally {
-      setSendingVerification(false);
+      setChangingEmail(false);
     }
   };
 
@@ -44,24 +67,16 @@ export default function ForceUpdateProfileScreen() {
     if (!newPassword) return showToast("⚠️ New password is required.", "error");
     if (newPassword !== confirmPassword) return showToast("⚠️ Passwords do not match.", "error");
     if (newPassword.length < 6) return showToast("⚠️ Password must be at least 6 characters.", "error");
-    if (newEmail !== firebaseUser?.email && !emailLinkSent) {
-      return showToast("⚠️ Please verify your new email first, or tap Update to proceed with password only if it failed.", "error");
+    if (newEmail !== firebaseUser?.email && !emailUpdated) {
+      return showToast("⚠️ Please update your email first using the button above.", "error");
     }
     
     setLoading(true);
     try {
       if (!firebaseUser || !firebaseUser.email) throw new Error("No user found.");
 
-      // Refresh the user in case they already verified the new email link 
-      await firebaseUser.reload();
-      const currentEmail = firebaseUser.email!;
-
-      // 2. Fallback to send email if they didn't but ignored the warning
-      let emailVerifSent = emailLinkSent;
-      if (newEmail !== firebaseUser.email && !emailLinkSent) {
-        await verifyBeforeUpdateEmail(firebaseUser, newEmail);
-        emailVerifSent = true;
-      }
+      // Email was already updated via handleChangeEmail if needed
+      const currentEmail = emailUpdated ? newEmail : firebaseUser.email!;
 
       // 3. Update Password
       if (newPassword) {
@@ -75,8 +90,8 @@ export default function ForceUpdateProfileScreen() {
         email: currentEmail
       });
 
-      if (emailVerifSent) {
-        showToast("✅ Profile updated! Please check your new inbox to complete the email transfer.", "success");
+      if (emailUpdated) {
+        showToast("✅ Profile updated with new email!", "success");
       } else {
         showToast("✅ Profile updated successfully!", "success");
       }
@@ -127,19 +142,33 @@ export default function ForceUpdateProfileScreen() {
               style={styles.input}
             />
 
-            {(newEmail !== firebaseUser?.email && !emailLinkSent) && (
-              <Button
-                title={sendingVerification ? "Sending..." : "Verify Email First"}
-                onPress={handleSendVerification}
-                loading={sendingVerification}
-                disabled={sendingVerification}
-                variant="secondary"
-                style={{ marginBottom: SPACING.md }}
-              />
+            {newEmail !== (firebaseUser?.email || '') && !emailUpdated && (
+              <>
+                <PaperInput
+                  label="Current Password (to confirm email change)"
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  mode="outlined"
+                  outlineColor={COLORS.border}
+                  activeOutlineColor={COLORS.accent}
+                  textColor={COLORS.textDark}
+                  style={styles.input}
+                />
+                <Button
+                  title={changingEmail ? "Updating Email..." : "Update Email"}
+                  onPress={handleChangeEmail}
+                  loading={changingEmail}
+                  disabled={changingEmail}
+                  variant="secondary"
+                  style={{ marginBottom: SPACING.md }}
+                />
+              </>
             )}
-            {emailLinkSent && (
-              <Text style={{ color: COLORS.success, fontSize: 13, marginBottom: SPACING.md, textAlign: 'center' }}>
-                ✉️ Link sent! Check your inbox.
+            
+            {emailUpdated && (
+              <Text style={{ color: COLORS.success, fontSize: 13, marginBottom: SPACING.md, textAlign: 'center', fontWeight: 'bold' }}>
+                ✅ Email Updated to {newEmail}!
               </Text>
             )}
 

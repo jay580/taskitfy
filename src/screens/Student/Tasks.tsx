@@ -13,6 +13,7 @@ import {
   TextInput,
   Animated,
   Platform,
+  Alert,
 } from 'react-native';
 import { pickImage as pickImageUtil } from '../../utils/imagePicker';
 import { uploadMultipleToCloudinary } from '../../services/uploadImage';
@@ -33,10 +34,10 @@ import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
 import FadeInView from '../../components/FadeInView';
 import TaskCard from '../../components/TaskCard';
 import { TasksSkeleton } from '../../components/SkeletonComponents';
-import { getTaskStatus, getTaskStatusLabel } from '../../utils/taskStatus';
+import { getTaskStatus, getTaskStatusLabel, getTaskEndTime } from '../../utils/taskStatus';
 
 const MAX_IMAGES = 5;
-const PRIMARY_TABS = ['Available', 'Submissions', 'Completed'];
+const PRIMARY_TABS = ['Available', 'Submissions', 'Completed', 'Expired'];
 const CATEGORIES = ['All', 'Academic', 'Domestic', 'Sports', 'Special'];
 
 const getCategoryColor = (cat: string) => {
@@ -73,6 +74,7 @@ export default function TasksScreen({ route }: any) {
   const [activeTab, setActiveTab] = useState('Available');
   const [activeCategory, setActiveCategory] = useState('All');
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+  const [expiredTasks, setExpiredTasks] = useState<Task[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [completed, setCompleted] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,25 @@ export default function TasksScreen({ route }: any) {
         getStudentSubmissions(uid),
         getCompletedSubmissions(uid),
       ]);
-      setAvailableTasks(taskList);
+      
+      const now = Date.now();
+      const available: Task[] = [];
+      const expired: Task[] = [];
+      
+      taskList.forEach(t => {
+        const endTimeStr = getTaskEndTime({ createdAt: t.createdAt, deadline: t.deadline, duration: t.duration, durationType: t.durationType });
+        if (endTimeStr && endTimeStr.getTime() < now) {
+          // If expired less than 24 hours ago, keep it in expired array.
+          if (now - endTimeStr.getTime() <= 24 * 60 * 60 * 1000) {
+             expired.push(t);
+          }
+        } else {
+          available.push(t);
+        }
+      });
+      
+      setAvailableTasks(available);
+      setExpiredTasks(expired);
       setSubmissions(subs.filter(s => s.status !== 'approved'));
       setCompleted(comp);
     } catch (err) {
@@ -189,21 +209,24 @@ export default function TasksScreen({ route }: any) {
       data = availableTasks;
     } else if (activeTab === 'Submissions') {
       data = submissions;
+    } else if (activeTab === 'Expired') {
+      data = expiredTasks;
     } else {
       data = completed;
     }
 
-    // Only apply category filter on 'Available' tab, since Submissions don't strictly retain category in schema
-    if (activeCategory !== 'All' && activeTab === 'Available') {
+    // Only apply category filter on 'Available' and 'Expired' tab
+    if (activeCategory !== 'All' && (activeTab === 'Available' || activeTab === 'Expired')) {
       data = data.filter(item => item.category === activeCategory);
     }
     return data;
   };
 
   const renderAvailableTask = (item: Task, index: number) => {
-    const isExpired = getTaskStatus({ createdAt: item.createdAt, duration: item.duration, durationType: item.durationType }) === 'expired';
-    const rawTime = getTaskStatusLabel({ createdAt: item.createdAt, duration: item.duration, durationType: item.durationType }) || '';
-    const timeText = isExpired ? 'Expired' : rawTime.includes('ago') ? rawTime : `⏳ Ends in ${rawTime}`;
+    const isExpiredLocally = getTaskStatus({ createdAt: item.createdAt, deadline: item.deadline, duration: item.duration, durationType: item.durationType }) === 'expired';
+    const isExpired = activeTab === 'Expired' || isExpiredLocally;
+    const rawTime = getTaskStatusLabel({ createdAt: item.createdAt, deadline: item.deadline, duration: item.duration, durationType: item.durationType }) || '';
+    const timeText = isExpired ? 'Expired' : rawTime ? `Ends in ${rawTime}` : '';
     return (
       <FadeInView delay={index * 80}>
         <TaskCard
@@ -212,7 +235,7 @@ export default function TasksScreen({ route }: any) {
           timeText={timeText}
           points={item.points}
           isExpired={isExpired}
-          onPress={() => navigation.navigate('TaskDetail', { task: item })}
+          onPress={() => isExpired ? Alert.alert('Task Expired', 'You can no longer submit to this task.') : navigation.navigate('TaskDetail', { task: item })}
         />
       </FadeInView>
     );
@@ -293,7 +316,7 @@ export default function TasksScreen({ route }: any) {
         data={data as any}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => 
-          activeTab === 'Available' 
+          (activeTab === 'Available' || activeTab === 'Expired')
             ? renderAvailableTask(item as Task, index) 
             : renderSubmissionCard(item as Submission, index)
         }

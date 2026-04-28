@@ -16,7 +16,6 @@ import { observeTasks, Task } from '../../services/tasks';
 import { observeStudents, observeLeaderboard, UserSchema } from '../../services/users';
 import { observePendingSubmissions, approveSubmission, rejectSubmission, Submission } from '../../services/submissions';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -62,10 +61,16 @@ export default function DashboardScreen() {
 
     const fetchAnnouncement = async () => {
       try {
-        const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(1));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          setLatestAnnouncement(snap.docs[0].data().message);
+        const { getDoc, doc: docRef } = await import('firebase/firestore');
+        const snap = await getDoc(docRef(db, 'settings', 'global'));
+        if (snap.exists()) {
+          const data = snap.data();
+          const expiry = data.announcementExpiry?.toDate ? data.announcementExpiry.toDate() : data.announcementExpiry ? new Date(data.announcementExpiry) : null;
+          if (data.announcement && (!expiry || expiry > new Date())) {
+            setLatestAnnouncement(data.announcement);
+          } else {
+            setLatestAnnouncement('Keep up the great work!');
+          }
         } else {
           setLatestAnnouncement('Keep up the great work!');
         }
@@ -304,7 +309,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       {/* Verification Modal */}
-      <Modal visible={verificationModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCloseVerification}>
+      <Modal visible={verificationModalVisible} animationType="slide" onRequestClose={handleCloseVerification}>
         {selectedSubmission && (() => {
            const studentInfo = students.find(s => s.uid === selectedSubmission.studentId || s.studentId === selectedSubmission.studentId);
            const submissionImages = Array.isArray(selectedSubmission.photoUrls)
@@ -424,7 +429,7 @@ export default function DashboardScreen() {
                </ScrollView>
 
                {/* Sticky Action Footer */}
-               <View style={styles.verifyFooter}>
+               <SafeAreaView edges={['bottom']} style={styles.verifyFooter}>
                  {isRejecting ? (
                    <>
                      <Button title="Cancel" variant="secondary" onPress={() => setIsRejecting(false)} style={{ flex: 1 }} disabled={isActionLoading} />
@@ -436,7 +441,7 @@ export default function DashboardScreen() {
                      <Button title={isActionLoading ? "Approving..." : "Approve Task"} variant="primary" onPress={handleApprove} style={{ flex: 2 }} disabled={isActionLoading} />
                    </>
                  )}
-               </View>
+               </SafeAreaView>
              </LinearGradient>
            );
         })()}
@@ -697,7 +702,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
   },
-  verifyScroll: { padding: SPACING.lg, paddingBottom: 100 },
+  verifyScroll: { padding: SPACING.lg, paddingBottom: 160 },
   verifyStudentCard: {
     flexDirection: 'row',
     alignItems: 'center',

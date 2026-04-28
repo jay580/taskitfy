@@ -106,30 +106,18 @@ export default function HomeScreen() {
     }
   };
 
-  // Derive specialized lists without arbitrary slicing
+  // Derive specialized lists
   const featuredTasks = useMemo(() => {
-    return tasks.filter(t => t.points >= 50 || (t as any).isFeatured);
+    return tasks.filter(t => {
+      const st = getTaskStatus({ createdAt: t.createdAt, deadline: t.deadline, duration: t.duration, durationType: t.durationType });
+      return t.category === 'Special' && st === 'active';
+    });
   }, [tasks]);
 
   const endingSoonTasks = useMemo(() => {
     return tasks.filter(t => {
-      const st = getTaskStatus({
-        createdAt: t.createdAt,
-        duration: t.duration,
-        durationType: t.durationType,
-      });
-      if (st !== 'active') return false;
-      
-      if (t.duration && t.durationType) {
-        const cDate = new Date(t.createdAt).getTime();
-        const dTypeMap: any = { hours: 3600000, days: 86400000, weeks: 604800000 };
-        const dMs = t.duration * (dTypeMap[t.durationType] || 0);
-        const endsAt = cDate + dMs;
-        const remaining = endsAt - Date.now();
-        // Return true if remaining is less than or equal to 24 hours (86400000 ms)
-        return remaining > 0 && remaining <= 86400000;
-      }
-      return false;
+      const st = getTaskStatus({ createdAt: t.createdAt, deadline: t.deadline, duration: t.duration, durationType: t.durationType });
+      return t.category !== 'Special' && st === 'active';
     });
   }, [tasks]);
 
@@ -223,7 +211,7 @@ export default function HomeScreen() {
         </SafeAreaView>
 
         {/* Announcement Card */}
-        {settings?.announcement && (
+        {settings?.announcement && (!settings.announcementExpiry || new Date(settings.announcementExpiry) > new Date()) && (
           <FadeInView delay={150}>
             <View style={styles.announcementWrapper}>
               <LinearGradient
@@ -251,7 +239,11 @@ export default function HomeScreen() {
                   <TaskCard
                     title={task.title}
                     category={task.category}
-                    timeText={getTaskStatusLabel({ createdAt: task.createdAt, duration: task.duration, durationType: task.durationType }) || ''}
+                    timeText={(() => {
+                      const isExpired = getTaskStatus({ createdAt: task.createdAt, deadline: task.deadline, duration: task.duration, durationType: task.durationType }) === 'expired';
+                      const rawTime = getTaskStatusLabel({ createdAt: task.createdAt, deadline: task.deadline, duration: task.duration, durationType: task.durationType });
+                      return isExpired ? 'Expired' : rawTime ? `Ends in ${rawTime}` : '';
+                    })()}
                     points={task.points}
                     onPress={() => navigation.navigate('Quests')}
                   />
@@ -272,9 +264,13 @@ export default function HomeScreen() {
                   <TaskCard
                     title={task.title}
                     category={task.category}
-                    timeText={getTaskStatusLabel({ createdAt: task.createdAt, duration: task.duration, durationType: task.durationType }) || ''}
+                    timeText={(() => {
+                      const isExpired = getTaskStatus({ createdAt: task.createdAt, deadline: task.deadline, duration: task.duration, durationType: task.durationType }) === 'expired';
+                      const rawTime = getTaskStatusLabel({ createdAt: task.createdAt, deadline: task.deadline, duration: task.duration, durationType: task.durationType });
+                      return isExpired ? 'Expired' : rawTime ? `Ends in ${rawTime}` : '';
+                    })()}
                     points={task.points}
-                    isExpired={false}
+                    isExpired={getTaskStatus({ createdAt: task.createdAt, deadline: task.deadline, duration: task.duration, durationType: task.durationType }) === 'expired'}
                     style={{ borderColor: 'rgba(229, 62, 62, 0.3)' }} // Urgent border hint
                     onPress={() => navigation.navigate('Quests')}
                   />

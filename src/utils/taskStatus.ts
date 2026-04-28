@@ -4,6 +4,7 @@ type TaskLike = {
   createdAt?: string | Date | null;
   duration?: number | null;
   durationType?: TaskDurationType | null;
+  deadline?: string | Date | null;
 };
 
 export type TaskStatus = 'active' | 'expired';
@@ -15,6 +16,10 @@ const getDateFromValue = (value: string | Date | null | undefined): Date | null 
 };
 
 export const getTaskEndTime = (task: TaskLike): Date | null => {
+  if (task.deadline) {
+    const d = getDateFromValue(task.deadline);
+    if (d) return d;
+  }
   const createdAt = getDateFromValue(task.createdAt ?? null);
   const duration = Number(task.duration ?? 0);
   const durationType = task.durationType;
@@ -41,14 +46,15 @@ export const getTaskStatusLabel = (task: TaskLike): string => {
   if (!endTime) return '';
 
   const diffMs = endTime.getTime() - Date.now();
-  if (diffMs <= 0) return '🔴 Expired';
+  if (diffMs <= 0) return 'Expired';
 
   const totalMinutes = Math.floor(diffMs / 60000);
-  if (totalMinutes < 60) return `⏳ Ends in ${totalMinutes}m`;
+  if (totalMinutes < 60) return `${totalMinutes}m`;
 
   const totalHours = Math.floor(totalMinutes / 60);
-  if (totalHours < 24) return `⏳ Ends in ${totalHours}h`;
+  if (totalHours < 24) return `${totalHours}h`;
 
   const totalDays = Math.floor(totalHours / 24);
-  return `⏳ Ends in ${totalDays}d`;
+  return `${totalDays}d`;
 };
+

@@ -34,12 +34,16 @@ export default function LoginScreen() {
       await login(email, password);
       // Navigation is handled automatically by RootNavigator when auth state changes
     } catch (err: any) {
-      let message = 'Login failed. Please try again.';
+      let message = err.message || 'Login failed. Please try again.';
       if (err.code === 'auth/user-not-found') message = 'No account found with this email.';
       else if (err.code === 'auth/wrong-password') message = 'Incorrect password.';
       else if (err.code === 'auth/invalid-email') message = 'Invalid email address.';
       else if (err.code === 'auth/invalid-credential') message = 'Invalid email or password.';
       else if (err.code === 'auth/too-many-requests') message = 'Too many attempts. Try again later.';
+      
+      // Clean up Firebase error prefix if any
+      message = message.replace(/^Firebase:\s*/, '').replace(/\s*\(auth\/.*\)\.$/, '');
+      
       Alert.alert('Login Failed', message);
       setLoading(false);
     }

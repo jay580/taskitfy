@@ -20,7 +20,7 @@ import { uploadMultipleToCloudinary } from '../../services/uploadImage';
 import { pickImage, takePhoto } from '../../utils/imagePicker';
 import type { Task, TaskCategory } from '../../types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../theme';
-import { getTaskStatusLabel } from '../../utils/taskStatus';
+import { getTaskStatusLabel, getTaskStatus } from '../../utils/taskStatus';
 import Card from '../../components/Card';
 import { Platform } from 'react-native';
 
@@ -61,6 +61,8 @@ export default function TaskDetail({ route, navigation }: Props) {
   const categoryColor = CATEGORY_COLORS[task.category] || COLORS.secondary;
   const categoryIcon = CATEGORY_ICONS[task.category] || 'flag';
   const timeStatus = getTaskStatusLabel(task);
+  const isExpired = getTaskStatus(task) === 'expired';
+  const timeText = isExpired ? 'Expired' : timeStatus ? `Ends in ${timeStatus}` : '';
 
   // ─── Image Handlers ───
 
@@ -90,6 +92,12 @@ export default function TaskDetail({ route, navigation }: Props) {
 
   const handleSubmit = async () => {
     if (!userProfile) return;
+
+    // Block expired tasks
+    if (getTaskStatus(task) === 'expired') {
+      Alert.alert('Task Expired', 'This task has expired and can no longer be submitted.');
+      return;
+    }
 
     // 1. Validate at least 1 image
     if (!images.length) {
@@ -128,9 +136,10 @@ export default function TaskDetail({ route, navigation }: Props) {
     }
   };
 
-  const isLocked = uploading || submitting;
+  const isLocked = uploading || submitting || isExpired;
 
   const getButtonLabel = () => {
+    if (isExpired) return 'Task Expired';
     if (uploading) return `Uploading ${images.length} photo${images.length > 1 ? 's' : ''}...`;
     if (submitting) return 'Submitting...';
     if (uploadFailed) return 'Retry Upload';
@@ -166,7 +175,7 @@ export default function TaskDetail({ route, navigation }: Props) {
                 <View style={[styles.badge, { backgroundColor: `${categoryColor}20` }]}>
                   <Text style={[styles.badgeText, { color: categoryColor }]}>{task.category}</Text>
                 </View>
-                {timeStatus ? <Text style={styles.deadline}>⏳ {timeStatus}</Text> : null}
+                {timeText ? <Text style={styles.deadline}>⏳ {timeText}</Text> : null}
               </View>
             </View>
           </View>

@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { pickImage as pickImageUtil } from '../../utils/imagePicker';
 import { uploadToCloudinary } from '../../services/uploadImage';
 import { updateDoc, doc } from 'firebase/firestore';
-import { verifyBeforeUpdateEmail } from 'firebase/auth';
+import { verifyBeforeUpdateEmail, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useUser } from '../../hooks/useUser';
@@ -43,8 +43,8 @@ export default function ProfileScreen() {
   // Email state
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [newEmail, setNewEmail] = useState('');
+  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
   const [changingEmail, setChangingEmail] = useState(false);
-  const [emailLinkSent, setEmailLinkSent] = useState(false);
 
   // DOB state
   const [dobModalVisible, setDobModalVisible] = useState(false);
@@ -104,51 +104,44 @@ export default function ProfileScreen() {
   const handleChangeEmail = async () => {
     if (!newEmail || !newEmail.includes('@')) return showToast("⚠️ Valid email required", "error");
     if (newEmail === displayUser?.email) return showToast("⚠️ Email is the same", "error");
+    if (!currentPasswordForEmail) return showToast("⚠️ Enter your current password to confirm", "error");
     
     setChangingEmail(true);
     try {
       const firebaseUser = auth.currentUser;
-      if (!firebaseUser) throw new Error("No authenticated user.");
+      if (!firebaseUser || !firebaseUser.email) throw new Error("No authenticated user.");
       
-      // Update Firebase Auth - sends verification link
-      await verifyBeforeUpdateEmail(firebaseUser, newEmail);
+      // Reauthenticate first to satisfy Firebase security
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPasswordForEmail);
+      await reauthenticateWithCredential(firebaseUser, credential);
       
-      setEmailLinkSent(true);
-      showToast("✉️ Verification link sent! Check your new email.", "success");
+      // Send verification to the NEW email with explicit settings
+      const actionCodeSettings = {
+        url: `https://ssiapp-6e196.firebaseapp.com`,
+        handleCodeInApp: false,
+      };
+      await verifyBeforeUpdateEmail(firebaseUser, newEmail, actionCodeSettings);
+      
+      // Also update email in Firestore immediately (Auth email changes after verification)
+      const uid = user?.uid || userProfile?.uid || firebaseUser.uid;
+      await updateDoc(doc(db, 'users', uid), { email: newEmail });
+      
+      showToast("✉️ Verification link sent to " + newEmail + ". Check inbox & spam!", "success");
+      setEmailModalVisible(false);
+      setNewEmail('');
+      setCurrentPasswordForEmail('');
       
     } catch (e: any) {
-      if (e.code === 'auth/requires-recent-login') {
-         showToast("❌ Please log out and back in to change email.", "error");
+      console.error('Email change error:', e.code, e.message);
+      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+        showToast("❌ Incorrect password. Please try again.", "error");
+      } else if (e.code === 'auth/email-already-in-use') {
+        showToast("❌ This email is already in use by another account.", "error");
+      } else if (e.code === 'auth/requires-recent-login') {
+        showToast("❌ Session expired. Please log out and back in.", "error");
       } else {
-         showToast(`❌ ${e.message}`, "error");
+        showToast(`❌ ${e.message}`, "error");
       }
-    } finally {
-      setChangingEmail(false);
-    }
-  };
-
-  const handleConfirmEmailChange = async () => {
-    setChangingEmail(true);
-    try {
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) throw new Error("No authenticated user.");
-      
-      // Reload the user data from Firebase to check if they clicked the link
-      await firebaseUser.reload();
-      
-      if (firebaseUser.email === newEmail) {
-        // Verification was successful! Update Firestore now.
-        const uid = user?.uid || userProfile?.uid || firebaseUser.uid;
-        await updateDoc(doc(db, 'users', uid), { email: newEmail });
-        
-        showToast("✅ Email changed and synced successfully!", "success");
-        setEmailModalVisible(false);
-        setEmailLinkSent(false);
-      } else {
-        showToast("⚠️ Email not verified yet. Please click the link in your inbox.", "error");
-      }
-    } catch (e: any) {
-      showToast(`❌ ${e.message}`, "error");
     } finally {
       setChangingEmail(false);
     }
@@ -352,26 +345,22 @@ export default function ProfileScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               value={newEmail}
-              onChangeText={(text) => {
-                setNewEmail(text);
-                if (emailLinkSent) setEmailLinkSent(false); // Reset if they start typing again
-              }}
+              onChangeText={setNewEmail}
             />
 
-            {!emailLinkSent ? (
-              <TouchableOpacity style={styles.saveBtn} onPress={handleChangeEmail} disabled={changingEmail}>
-                <Text style={styles.saveBtnText}>{changingEmail ? "Sending..." : "Send Verification Link"}</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ marginTop: SPACING.md }}>
-                <Text style={{ color: COLORS.success, fontSize: 13, marginBottom: SPACING.md, textAlign: 'center' }}>
-                  ✉️ Verification link sent! Please click the link in your inbox to verify, then tap the button below.
-                </Text>
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: COLORS.success }]} onPress={handleConfirmEmailChange} disabled={changingEmail}>
-                  <Text style={styles.saveBtnText}>{changingEmail ? "Checking..." : "I have verified it, Update"}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            <Text style={styles.modalLabel}>Current Password (to confirm)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter your current password"
+              placeholderTextColor={COLORS.mutedText}
+              secureTextEntry
+              value={currentPasswordForEmail}
+              onChangeText={setCurrentPasswordForEmail}
+            />
+
+            <TouchableOpacity style={styles.saveBtn} onPress={handleChangeEmail} disabled={changingEmail}>
+              <Text style={styles.saveBtnText}>{changingEmail ? "Updating..." : "Update Email"}</Text>
+            </TouchableOpacity>
           </ScrollView>
         </LinearGradient>
       </Modal>

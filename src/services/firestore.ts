@@ -20,6 +20,7 @@ import type {
   LeaderboardEntry,
   AppSettings,
   Notification,
+  TeamId,
 } from '../types';
 
 // ─── Helpers ───
@@ -339,14 +340,14 @@ export const getLeaderboard = async (): Promise<LeaderboardEntry[]> => {
     orderBy('pointsThisMonth', 'desc'),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d, idx) => {
+  return snap.docs.map((d, idx): LeaderboardEntry => {
     const data = d.data();
     return {
       uid: d.id,
       name: data.name ?? '',
       initials: getInitials(data.name ?? ''),
       profileImage: data.profileImage ?? null,
-      teamId: data.teamId ?? '',
+      teamId: (data.teamId as TeamId) || '',
       teamName: data.teamName ?? '',
       totalTasksDone: data.totalTasksDone ?? 0,
       points: data.pointsThisMonth ?? 0,

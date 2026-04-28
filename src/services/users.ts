@@ -286,8 +286,9 @@ export const updateStudentSuspension = async (userId: string, durationDays: numb
         suspensionEnd: deleteField()
       });
     } else {
-      const end = new Date();
-      end.setDate(end.getDate() + durationDays);
+      // Use milliseconds for precise calculation (supports fractional days for hours)
+      const durationMs = durationDays * 24 * 60 * 60 * 1000;
+      const end = new Date(Date.now() + durationMs);
       await updateDoc(userRef, {
         isSuspended: true,
         suspensionEnd: end
